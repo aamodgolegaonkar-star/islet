@@ -413,6 +413,10 @@ final class IslandController {
 
     /// Volume or brightness level, kept up while the keys are pressed.
     func showLevel(_ hud: LevelHUD) {
+        if settings.levelPosition != .island {
+            EdgeLevelHUD.shared.show(hud, on: settings.levelPosition)
+            return
+        }
         // The headphones card stays up for its few seconds.
         if case .headphones? = model.activity { return }
         if model.level != hud { model.level = hud }

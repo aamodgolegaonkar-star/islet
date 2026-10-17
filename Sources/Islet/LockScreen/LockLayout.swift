@@ -14,7 +14,7 @@ struct LockLayout {
     /// out below it and draws the clock inside it.
     let clockInset: CGFloat
 
-    static let widgetsSize = CGSize(width: 460, height: 104)
+    static let widgetsSize = CGSize(width: 640, height: 104)
     static let playerSize = CGSize(width: 460, height: 224)
 
     /// `clockBottom`: where the real clock's digits end (from LoginUIKit's own views).

@@ -80,6 +80,9 @@ extension SettingsView {
             Toggle("Replace the macOS volume and brightness indicator",
                    isOn: $settings.replaceSystemIndicator.animation(reveal))
                 .onChange(of: settings.replaceSystemIndicator) { _, on in MediaKeys.shared.setEnabled(on) }
+            Picker("Position", selection: $settings.levelPosition) {
+                ForEach(LevelPosition.allCases) { Text($0.title).tag($0) }
+            }
         } header: {
             Text("Show in the Island")
         } footer: {
@@ -119,6 +122,7 @@ extension SettingsView {
             Toggle("Keep files dragged to the island", isOn: $settings.shelfEnabled.animation(reveal))
             if settings.shelfEnabled {
                 Toggle("Store copies", isOn: $settings.shelfKeepsCopies)
+                Toggle("Clipboard history", isOn: $settings.clipboardHistory)
             }
         } footer: {
             Text(settings.shelfEnabled && settings.shelfKeepsCopies
@@ -150,6 +154,24 @@ extension SettingsView {
             }
         }
         .animation(reveal, value: settings.lyricsOffset == 0)
+
+        Section {
+            Toggle("Equalizer", isOn: $settings.equalizerEnabled.animation(reveal))
+            if settings.equalizerEnabled {
+                EqualizerEditor(settings: settings)
+                    .padding(.vertical, 4)
+            }
+            Toggle("Live waveform", isOn: $settings.liveWaveform)
+            if settings.equalizerEnabled || settings.liveWaveform {
+                AudioAccessRow()
+            }
+        } header: {
+            Text("Sound")
+        } footer: {
+            Text(settings.equalizerEnabled
+                 ? "The equalizer shapes Apple Music and Spotify. The live waveform makes the island's bars follow the music. Both need Audio Recording access the first time; nothing is recorded or saved."
+                 : "The live waveform makes the island's bars follow the music. It needs Audio Recording access the first time; nothing is recorded or saved.")
+        }
 
         Section {
             Toggle("Motion artwork when available", isOn: $settings.animatedArtworkEnabled.animation(reveal))
@@ -217,7 +239,17 @@ extension SettingsView {
     @ViewBuilder
     var lockPane: some View {
         Section {
-            Toggle("Show the island and player on the lock screen", isOn: $settings.lockWidgetEnabled)
+            Toggle("Show the island and player on the lock screen", isOn: $settings.lockWidgetEnabled.animation(reveal))
+            if settings.lockWidgetEnabled {
+                Toggle("Weather", isOn: $settings.lockWeather)
+                    .onChange(of: settings.lockWeather) { _, on in if on { WeatherService.shared.requestAccess() } }
+                Toggle("Headphone battery", isOn: $settings.lockHeadphones)
+                Toggle("Motion artwork behind the widgets", isOn: $settings.lockMotionBackground)
+            }
+        } footer: {
+            if settings.lockWidgetEnabled {
+                Text("Weather uses your location and Open-Meteo. Motion artwork needs the Apple Music token in Music & Lyrics.")
+            }
         }
         Section("Sounds") {
             Picker("Lock and unlock", selection: $settings.lockSoundStyle.animation(reveal)) {

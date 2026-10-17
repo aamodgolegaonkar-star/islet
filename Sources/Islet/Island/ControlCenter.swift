@@ -47,6 +47,7 @@ struct ControlCenterView: View {
                     HStack(spacing: 6) {
                         action("Lock Screen", symbol: "lock.fill", id: "cc.lock", run: controls.lockScreen)
                         action("Screenshot", symbol: "camera.viewfinder", id: "cc.screenshot", run: controls.screenshot)
+                        OutputButton(model: model, diameter: 28)
                         Spacer()
                         if let showShelf { action("Shelf", symbol: "tray.full.fill", id: "cc.shelf", run: showShelf) }
                         if store.hasTrack { action("Now Playing", symbol: "music.note", id: "cc.music", run: showMusic) }

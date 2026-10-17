@@ -25,6 +25,12 @@ struct LockWidgetsRow: View {
     private var widgets: some View {
         GlassContainer(spacing: 10) {
             HStack(spacing: 12) {
+                if let weather = model.weather {
+                    WeatherTile(report: weather)
+                        .frame(width: 66, height: 66)
+                        .lockGlass(Circle())
+                        .transition(.scale.combined(with: .opacity))
+                }
                 if let battery = model.battery {
                     BatteryRing(battery: battery)
                         .frame(width: 66, height: 66)
@@ -38,6 +44,11 @@ struct LockWidgetsRow: View {
                 VolumeRing(level: store.volume)
                     .frame(width: 66, height: 66)
                     .lockGlass(Circle())
+                if let headphones = model.headphones {
+                    HeadphoneRing(status: headphones)
+                        .frame(width: 66, height: 66)
+                        .lockGlass(Circle())
+                }
             }
         }
         .foregroundStyle(.white)
@@ -86,6 +97,51 @@ struct BatteryRing: View {
     }
 }
 
+/// Now: the condition, the temperature, and today's high and low.
+struct WeatherTile: View {
+    let report: WeatherService.Report
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Image(systemName: report.symbol)
+                .symbolRenderingMode(.multicolor)
+                .font(.system(size: 15))
+            Text("\(report.temperature)°")
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+            Text("\(report.high)° \(report.low)°")
+                .font(.system(size: 8.5, weight: .medium))
+                .foregroundStyle(.white.opacity(0.7))
+        }
+        .padding(8)
+    }
+}
+
+/// Connected headphones: their glyph inside a ring of the lowest battery level.
+struct HeadphoneRing: View {
+    let status: HeadphoneStatus
+
+    var body: some View {
+        let level = Double(status.level ?? 0) / 100
+        ZStack {
+            Circle().stroke(.white.opacity(0.22), lineWidth: 5)
+            Circle()
+                .trim(from: 0, to: level)
+                .stroke(level < 0.2 ? Color.red : .white, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 0) {
+                Image(systemName: status.symbol)
+                    .font(.system(size: 13, weight: .semibold))
+                Text("\(status.level ?? 0)")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+            }
+        }
+        .padding(10)
+        .help(status.name)
+    }
+}
+
 struct VolumeRing: View {
     let level: Double
 
@@ -117,7 +173,7 @@ struct NowPlayingMini: View {
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.miniArtFrame = $0 }
             VStack(alignment: .leading, spacing: 2) {
                 Text(store.title).font(.system(size: 13, weight: .semibold))
-                Text(store.artist).font(.system(size: 12)).foregroundStyle(.white.opacity(0.7))
+                Text(store.subtitle).font(.system(size: 12)).foregroundStyle(.white.opacity(0.7))
                 PlaybackClock(timing: store.timing, steps: 2) { date in
                     let duration = store.duration
                     let fraction = duration > 0 ? store.elapsed(at: date) / duration : 0
@@ -138,6 +194,36 @@ struct NowPlayingMini: View {
         .contentShape(Rectangle())
         .onTapGesture { model.expandFromMini() }
         .help("Show artwork")
+    }
+}
+
+// MARK: - Motion background
+
+/// The song's motion artwork filling the lock screen behind the widgets, fading in once
+/// the video is ready and darkened at the top and bottom so the clock and controls read.
+struct LockMotionBackground: View {
+    let store: PlayerStore
+    @Bindable var model: LockModel
+    let settings: AppSettings
+
+    var body: some View {
+        ZStack {
+            if model.isPresented, settings.lockMotionBackground, !model.isAlbumOpen, !LiveTuning.shared.batterySaving,
+               let url = store.motion?.tall ?? store.motion?.square {
+                LoopingVideoView(url: url)
+                    .overlay {
+                        LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0),
+                                               .init(color: .black.opacity(0.1), location: 0.45),
+                                               .init(color: .black.opacity(0.5), location: 1)],
+                                       startPoint: .top, endPoint: .bottom)
+                    }
+                    .transition(.opacity)
+                    .id(url)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
+        .animation(.easeInOut(duration: 0.8), value: store.motion?.tall ?? store.motion?.square)
     }
 }
 
@@ -166,7 +252,7 @@ struct LockPlayerPlatter: View {
                     .help("Show artwork")
                 VStack(alignment: .leading, spacing: 3) {
                     Text(store.title).font(.system(size: 15, weight: .semibold))
-                    Text(store.artist).font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
+                    Text(store.subtitle).font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
                 }
                 .lineLimit(1)
                 Spacer(minLength: 6)

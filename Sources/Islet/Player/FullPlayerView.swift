@@ -173,7 +173,7 @@ struct PlayerControls: View {
                         Text(store.title)
                             .font(.system(size: 21, weight: .semibold))
                             .foregroundStyle(.white)
-                        Text(store.artist)
+                        Text(store.subtitle)
                             .font(.system(size: 18, weight: .regular))
                             .foregroundStyle(.white.opacity(0.66))
                     }

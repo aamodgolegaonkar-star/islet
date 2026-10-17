@@ -202,7 +202,37 @@ struct EqualizerBars: View {
                 .frame(width: geo.size.width, height: geo.size.height)
             }
         } else {
-            EqualizerLayers(isPlaying: isPlaying, color: NSColor(color))
+            let live = WaveformLevels.shared
+            Group {
+                if isPlaying, live.isLive {
+                    LiveBars(levels: live.levels, color: color)
+                } else {
+                    EqualizerLayers(isPlaying: isPlaying, color: NSColor(color))
+                }
+            }
+            .onAppear { live.appeared() }
+            .onDisappear { live.disappeared() }
+        }
+    }
+}
+
+/// The bars following the music's real loudness in four frequency bands (Settings → Music
+/// → Live waveform), from the audio tap.
+private struct LiveBars: View {
+    var levels: [Float]
+    var color: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(alignment: .center, spacing: geo.size.width * 0.13) {
+                ForEach(0..<4, id: \.self) { i in
+                    let level = i < levels.count ? CGFloat(levels[i]) : 0
+                    Capsule().fill(color.gradient)
+                        .frame(height: max(geo.size.width * 0.16, geo.size.height * (0.15 + 0.85 * level)))
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .animation(.linear(duration: 1.0 / 30), value: levels)
         }
     }
 }

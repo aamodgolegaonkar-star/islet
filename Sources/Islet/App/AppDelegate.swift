@@ -72,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             island?.showHeadphones(card)
         }
         headphones.start()
+        OutputStatus.shared.start()
         privacy.onChange = { [weak island, weak settings] mic, camera in
             let show = settings?.showPrivacyDots == true
             island?.model.micActive = show && mic
@@ -125,6 +126,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         debugTools?.openTutorial = { [weak self] in self?.onboarding.show() }
         if !settings.onboardingDone { onboarding.show() }
         PowerMonitor.shared.start()
+        WaveformLevels.shared.onViewersChanged = { [weak self] in self?.updateAudioTap() }
+        updateAudioTap()
+    }
+
+    /// Keeps the audio tap (equalizer and live bars) in step with what's playing and the
+    /// settings; re-runs whenever anything it read changes.
+    private func updateAudioTap() {
+        guard let settings, let store else { return }
+        let wants = withObservationTracking {
+            let bundle = store.hasTrack ? store.snapshot?.bundleIdentifier : nil
+            let equalizer = settings.equalizerEnabled && ["com.apple.Music", "com.spotify.client"].contains(bundle ?? "")
+            let levels = settings.liveWaveform && store.isPlaying && WaveformLevels.shared.viewers > 0
+            AudioTapEngine.shared.setEqualizer(bands: settings.equalizerBands, preamp: settings.equalizerPreamp)
+            return AudioTapEngine.Wants(target: bundle, equalizer: equalizer, levels: levels)
+        } onChange: {
+            Task { @MainActor [weak self] in self?.updateAudioTap() }
+        }
+        AudioTapEngine.shared.update(wants)
     }
 
     /// islet://agent links from the Claude Code / Codex hook command.
@@ -139,6 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        AudioTapEngine.shared.stop()
         store?.stop()
         lockScreen?.shutdown()
     }
@@ -151,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
             source.setEventHandler { [weak self] in
                 MainActor.assumeIsolated {
+                    AudioTapEngine.shared.stop()
                     self?.store?.stop()
                     self?.lockScreen?.shutdown()
                 }

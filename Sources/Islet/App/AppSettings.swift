@@ -71,6 +71,23 @@ enum IslandStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Where the volume and brightness level appears.
+enum LevelPosition: String, CaseIterable, Identifiable {
+    case island
+    case leftEdge
+    case rightEdge
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .island: "In the Island"
+        case .leftEdge: "Left Edge"
+        case .rightEdge: "Right Edge"
+        }
+    }
+}
+
 /// User preferences plus the app's Application Support locations.
 @MainActor
 @Observable
@@ -104,6 +121,16 @@ final class AppSettings {
         static let islandLyrics = "showIslandLyrics"
         static let shelfCopies = "shelfKeepsCopies"
         static let emulateNotch = AppSettings.emulateNotchKey
+        static let levelPosition = "levelPosition"
+        static let clipboard = "clipboardHistory"
+        static let waveform = "liveWaveform"
+        static let equalizer = "equalizerEnabled"
+        static let eqBands = "equalizerBands"
+        static let eqPreamp = "equalizerPreamp"
+        static let eqPreset = "equalizerPreset"
+        static let lockWeather = "lockWeather"
+        static let lockHeadphones = "lockHeadphones"
+        static let lockMotion = "lockMotionBackground"
     }
 
     @ObservationIgnored private let defaults = UserDefaults.standard
@@ -208,6 +235,45 @@ final class AppSettings {
     var showIslandLyrics: Bool {
         didSet { defaults.set(showIslandLyrics, forKey: Key.islandLyrics); LiveTuning.shared.showIslandLyrics = showIslandLyrics }
     }
+    /// Where the volume and brightness level shows: the island, or a slider at a screen edge.
+    var levelPosition: LevelPosition {
+        didSet { defaults.set(levelPosition.rawValue, forKey: Key.levelPosition) }
+    }
+    /// The shelf's Clipboard tab keeps what was copied (in memory only).
+    var clipboardHistory: Bool {
+        didSet { defaults.set(clipboardHistory, forKey: Key.clipboard); ClipboardHistory.shared.isEnabled = clipboardHistory }
+    }
+    /// The bars follow the playing app's real audio (needs audio recording permission).
+    var liveWaveform: Bool {
+        didSet { defaults.set(liveWaveform, forKey: Key.waveform) }
+    }
+    /// The equalizer for Apple Music and Spotify.
+    var equalizerEnabled: Bool {
+        didSet { defaults.set(equalizerEnabled, forKey: Key.equalizer) }
+    }
+    /// Gain of each band in dB (see `Equalizer.frequencies`).
+    var equalizerBands: [Double] {
+        didSet { defaults.set(equalizerBands, forKey: Key.eqBands) }
+    }
+    /// Overall gain in dB before the bands, to make room for boosts.
+    var equalizerPreamp: Double {
+        didSet { save(equalizerPreamp, Key.eqPreamp) }
+    }
+    /// The preset the bands came from; nil once they're edited by hand.
+    var equalizerPreset: EqualizerPreset? {
+        didSet { defaults.set(equalizerPreset?.rawValue, forKey: Key.eqPreset) }
+    }
+    /// Lock-screen widgets.
+    var lockWeather: Bool {
+        didSet { defaults.set(lockWeather, forKey: Key.lockWeather) }
+    }
+    var lockHeadphones: Bool {
+        didSet { defaults.set(lockHeadphones, forKey: Key.lockHeadphones) }
+    }
+    /// Motion artwork fills the lock screen behind the widgets while music plays.
+    var lockMotionBackground: Bool {
+        didSet { defaults.set(lockMotionBackground, forKey: Key.lockMotion) }
+    }
     /// The first-launch tutorial has been seen.
     var onboardingDone: Bool {
         didSet { defaults.set(onboardingDone, forKey: Key.onboarded) }
@@ -248,6 +314,14 @@ final class AppSettings {
             Key.privacyDots: true,
             Key.islandLyrics: true,
             Key.lowBattery: true,
+            Key.levelPosition: LevelPosition.island.rawValue,
+            Key.clipboard: true,
+            Key.waveform: false,
+            Key.equalizer: false,
+            Key.eqPreamp: 0.0,
+            Key.lockWeather: false,
+            Key.lockHeadphones: true,
+            Key.lockMotion: true,
         ])
         supportDirectory = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -280,6 +354,19 @@ final class AppSettings {
         showIslandLyrics = defaults.bool(forKey: Key.islandLyrics)
         shelfKeepsCopies = defaults.bool(forKey: Key.shelfCopies)
         emulateNotch = defaults.bool(forKey: Key.emulateNotch)
+        levelPosition = LevelPosition(rawValue: defaults.string(forKey: Key.levelPosition) ?? "") ?? .island
+        clipboardHistory = defaults.bool(forKey: Key.clipboard)
+        liveWaveform = defaults.bool(forKey: Key.waveform)
+        equalizerEnabled = defaults.bool(forKey: Key.equalizer)
+        let bands = (defaults.array(forKey: Key.eqBands) as? [Double]) ?? []
+        equalizerBands = bands.count == Equalizer.frequencies.count
+            ? bands.map { Self.clamped($0, Equalizer.gainRange) } : Equalizer.flat
+        equalizerPreamp = Self.clamped(defaults.double(forKey: Key.eqPreamp), Equalizer.gainRange)
+        equalizerPreset = defaults.string(forKey: Key.eqPreset).flatMap(EqualizerPreset.init(rawValue:))
+        lockWeather = defaults.bool(forKey: Key.lockWeather)
+        lockHeadphones = defaults.bool(forKey: Key.lockHeadphones)
+        lockMotionBackground = defaults.bool(forKey: Key.lockMotion)
+        ClipboardHistory.shared.isEnabled = clipboardHistory
         // didSet doesn't run in init: publish the loaded values to the live views.
         let live = LiveTuning.shared
         live.glassTransparency = glassTransparency
@@ -326,6 +413,13 @@ final class AppSettings {
 
     private static func clamped(_ value: Double, _ range: ClosedRange<Double>) -> Double {
         value.isFinite ? min(max(value, range.lowerBound), range.upperBound) : range.lowerBound
+    }
+
+    /// Applies an equalizer preset (Flat is the reset).
+    func applyEqualizer(_ preset: EqualizerPreset) {
+        equalizerBands = preset.bands
+        equalizerPreamp = preset.preamp
+        equalizerPreset = preset
     }
 
     func setDeveloperToken(_ token: String?) {

@@ -102,15 +102,28 @@ struct ShelfView: View {
     @Environment(\.clickRouter) private var router
     @State private var targeted = false
     @State private var shareAnchor = ShareAnchor.Holder()
+    @State private var tab = Tab.files
+    private var clipboard: ClipboardHistory { .shared }
+    private enum Tab { case files, clipboard }
+    /// Dragging files in always shows the files.
+    private var showsClipboard: Bool { clipboard.isEnabled && tab == .clipboard && !targeted }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Label("Shelf", systemImage: "tray.full.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
+                if clipboard.isEnabled {
+                    tabButton("Files", symbol: "tray.full.fill", tab: .files)
+                    tabButton("Clipboard", symbol: "doc.on.clipboard.fill", tab: .clipboard)
+                } else {
+                    Label("Shelf", systemImage: "tray.full.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
                 Spacer()
-                if !shelf.items.isEmpty {
+                if showsClipboard, !clipboard.entries.isEmpty {
+                    button("Clear", symbol: "trash", id: "clip.clear") { clipboard.clear() }
+                }
+                if !showsClipboard, !shelf.items.isEmpty {
                     button("Share", symbol: "square.and.arrow.up", id: "shelf.share", action: share)
                         .background(ShareAnchor(holder: shareAnchor))
                     button("AirDrop", symbol: "dot.radiowaves.left.and.right", id: "shelf.airdrop", action: airDrop)
@@ -119,7 +132,9 @@ struct ShelfView: View {
                 button("Control Center", symbol: "switch.2", id: "shelf.controls", action: showControls)
                 if hasTrack { button("Now Playing", symbol: "music.note", id: "shelf.music", action: showMusic) }
             }
-            if shelf.items.isEmpty || targeted {
+            if showsClipboard {
+                ClipboardView(history: clipboard)
+            } else if shelf.items.isEmpty || targeted {
                 dropZone
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -143,6 +158,21 @@ struct ShelfView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: targeted)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: shelf.items)
         .onAppear { shelf.pruneMissing() }
+    }
+
+    private func tabButton(_ title: String, symbol: String, tab: Tab) -> some View {
+        let selected = self.tab == tab
+        let select = { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { self.tab = tab } }
+        return Button(action: ClickRouter.guarded(router, "shelf.tab.\(title)", select)) {
+            Label(title, systemImage: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(selected ? 1 : 0.55))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(.white.opacity(selected ? 0.16 : 0)))
+        }
+        .buttonStyle(.plain)
+        .routedClick("shelf.tab.\(title)", action: select)
     }
 
     private var dropZone: some View {

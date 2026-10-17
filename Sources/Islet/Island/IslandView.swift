@@ -222,7 +222,7 @@ struct IslandView: View {
                     Text(store.title)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text(store.artist)
+                    Text(store.subtitle)
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(.white.opacity(0.62))
                     if case .synced = store.lyrics, LiveTuning.shared.showIslandLyrics {
@@ -234,6 +234,7 @@ struct IslandView: View {
                 .onTapGesture { model.openPlayer() }
                 Spacer(minLength: 6)
                 if !model.shelf.items.isEmpty { shelfButton }
+                OutputButton(model: model)
                 IslandPillButton(label: nil, symbol: "switch.2", help: "Control Center", id: "island.controls") {
                     withAnimation(IslandMotion.open) { model.presentation = .controls }
                 }

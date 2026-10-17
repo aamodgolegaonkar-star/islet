@@ -12,6 +12,8 @@ final class LockModel {
     /// Height reserved at the top for the clock.
     var clockInset: CGFloat = 340
     var battery: BatteryState?
+    var weather: WeatherService.Report?
+    var headphones: HeadphoneStatus?
     var widgetsWallpaper: WallpaperContext?
     var playerWallpaper: WallpaperContext?
     /// Artwork frames in their own windows (top-left coordinates), reported by the views.
@@ -56,6 +58,14 @@ final class LockScreenController {
         let panel = makePanel("lock.island", islandModel.metrics.windowSize,
                               IslandView(model: islandModel, store: store, settings: settings))
         panel.ignoresMouseEvents = true
+        return panel
+    }()
+    /// Motion artwork behind everything else, filling the screen.
+    private lazy var motionPanel: NSPanel = {
+        let panel = makePanel("lock.motion", CGSize(width: 1200, height: 800),
+                              LockMotionBackground(store: store, model: model, settings: settings))
+        panel.ignoresMouseEvents = true
+        panel.level = NSWindow.Level(rawValue: panel.level.rawValue - 1)
         return panel
     }()
     private var failTask: Task<Void, Never>?
@@ -164,6 +174,15 @@ final class LockScreenController {
         self.layout = layout
         generation += 1
         model.battery = Battery.current()
+        model.headphones = settings.lockHeadphones ? HeadphoneStatus.current() : nil
+        model.weather = settings.lockWeather ? WeatherService.shared.report : nil
+        if settings.lockWeather {
+            Task { @MainActor [weak self] in
+                let report = await WeatherService.shared.current()
+                guard let self, self.model.isPresented, self.settings.lockWeather else { return }
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { self.model.weather = report }
+            }
+        }
         model.clockInset = layout.clockInset
         model.isPresented = true
         model.isAlbumOpen = false
@@ -171,6 +190,11 @@ final class LockScreenController {
         albumModel.isPresented = false
         albumModel.showLyrics = false
         albumPanel.orderOut(nil)
+
+        // First, so it sits under the widgets in the lock screen's space too.
+        if settings.lockMotionBackground {
+            show(motionPanel, at: screen.frame)
+        }
 
         // The island stays where it is on the desktop, now locked.
         islandModel.metrics = IslandMetrics.make(for: screen, style: settings.islandStyle)
@@ -190,7 +214,11 @@ final class LockScreenController {
 
         batteryTimer?.invalidate()
         batteryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.model.battery = Battery.current() }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.model.battery = Battery.current()
+                if self.settings.lockHeadphones { self.model.headphones = HeadphoneStatus.current() }
+            }
         }
     }
 
@@ -209,7 +237,7 @@ final class LockScreenController {
         let dismissal = generation
         model.isAlbumOpen = false
         albumModel.isOpen = false
-        for panel in [widgetsPanel, playerPanel, albumPanel, islandPanel] where panel.isVisible {
+        for panel in [widgetsPanel, playerPanel, albumPanel, islandPanel, motionPanel] where panel.isVisible {
             fade(panel, to: 0, duration: 0.25) { panel.orderOut(nil) }
         }
         // Once faded, drop the content so nothing keeps running behind the desktop.

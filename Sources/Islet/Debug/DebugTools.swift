@@ -77,6 +77,13 @@ final class DebugTools: NSObject {
         case "island.timerdone":
             island.cancelTimer()
             island.debugShowTimerDone()
+        case "outputs":
+            for output in AudioOutputs.list() {
+                Log.media.notice("Output \(output.name, privacy: .public) [\(output.symbol, privacy: .public)] current=\(output.isCurrent) connected=\(output.isConnected)")
+            }
+            Log.media.notice("Headphones: \(String(describing: HeadphoneStatus.current()), privacy: .public)")
+        case "levels":
+            Log.media.notice("Levels \(WaveformLevels.shared.levels.map { String(format: "%.2f", $0) }.joined(separator: " "), privacy: .public) peak \(AudioTapEngine.shared.debugPeak, format: .fixed(precision: 4)) \(AudioTapEngine.shared.debugInfo, privacy: .public)")
         case "island.lowbattery": island.showLowBattery(20)
         case "island.mic": island.model.micActive.toggle()
         case "island.camera": island.model.cameraActive.toggle()

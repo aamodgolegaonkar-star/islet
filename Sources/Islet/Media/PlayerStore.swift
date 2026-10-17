@@ -36,6 +36,13 @@ final class PlayerStore {
     var timing: PlaybackTiming? { snapshot?.timing }
     var title: String { snapshot?.title ?? "Not Playing" }
     var artist: String { snapshot?.artist ?? "" }
+    /// The web player a browser is playing (YouTube Music, Deezer…), when Islet recognises it.
+    private(set) var webService: String?
+    /// The artist, plus the web player's name when the music comes from a browser.
+    var subtitle: String {
+        guard let webService else { return artist }
+        return artist.isEmpty ? webService : "\(artist) · \(webService)"
+    }
 
     @ObservationIgnored let settings: AppSettings
     @ObservationIgnored private let adapter = AdapterSource()
@@ -358,6 +365,17 @@ final class PlayerStore {
         Log.media.info("Track: \(track.title, privacy: .public) — \(track.artist, privacy: .public) [\(track.bundleIdentifier, privacy: .public)]")
         hiResArtwork = nil
         motion = nil
+        webService = nil
+        if WebPlayers.isBrowser(track.bundleIdentifier), !isPreview {
+            let (bundle, title, key) = (track.bundleIdentifier, track.title, track.trackKey)
+            Task { [weak self] in
+                // The tab's title catches up with the song a moment after it starts.
+                try? await Task.sleep(for: .milliseconds(800))
+                let service = await WebPlayers.service(bundle: bundle, title: title)
+                guard let self, self.lastTrackKey == key else { return }
+                self.webService = service
+            }
+        }
         lyrics = .loading
         lyricsTask?.cancel()
         lookupTask?.cancel()

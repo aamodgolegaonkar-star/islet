@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.5.4</string>
+	<string>1.6.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -32,17 +32,23 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>13</string>
+	<string>14</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Islet switches Dark Mode from Control Center through System Events, and controls Apple Music or Spotify directly only when the system Now Playing service is unavailable.</string>
+	<string>Islet switches Dark Mode from Control Center through System Events, reads which web player a browser tab is playing (YouTube Music, Deezer, Qobuz…), and controls Apple Music or Spotify directly when the system Now Playing service is unavailable.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Islet's equalizer and live waveform process the music app's sound. Nothing is recorded or saved.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Islet turns Bluetooth on and off from Control Center in the island.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSLocationUsageDescription</key>
+	<string>Islet shows the weather for where you are on the lock screen.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Islet shows the weather for where you are on the lock screen.</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
