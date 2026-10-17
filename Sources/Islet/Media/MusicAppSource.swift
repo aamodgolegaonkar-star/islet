@@ -108,7 +108,10 @@ final class MusicAppSource {
     }
 
     private func handle(_ output: String?) {
-        guard let output, output != "STOPPED" else {
+        // No answer (Music busy, or Islet not allowed to ask it) says nothing about what's
+        // playing; only "STOPPED" means nothing is.
+        guard let output else { return }
+        guard output != "STOPPED" else {
             onEvent?(.nothingPlaying)
             return
         }

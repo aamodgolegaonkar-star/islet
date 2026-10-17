@@ -82,6 +82,21 @@ final class DebugTools: NSObject {
                 Log.media.notice("Output \(output.name, privacy: .public) [\(output.symbol, privacy: .public)] current=\(output.isCurrent) connected=\(output.isConnected)")
             }
             Log.media.notice("Headphones: \(String(describing: HeadphoneStatus.current()), privacy: .public)")
+        case "inject.placeholder":
+            // A browser page's background sound taking the Now Playing slot.
+            island.store.apply(.update(NowPlayingSnapshot(title: "A site is playing media", isPlaying: true,
+                                                          bundleIdentifier: "com.operasoftware.OperaAir")))
+            Log.media.notice("Now showing: \(self.island.store.title, privacy: .public)")
+        case "inject.paused":
+            // Another app, paused, taking the slot.
+            island.store.apply(.update(NowPlayingSnapshot(title: "Some Video", artist: "Some Channel", isPlaying: false,
+                                                          bundleIdentifier: "com.google.Chrome")))
+            Log.media.notice("Now showing: \(self.island.store.title, privacy: .public)")
+        case "inject.playing":
+            // Another app actually playing a song: it should take over.
+            island.store.apply(.update(NowPlayingSnapshot(title: "Other Song", artist: "Other Artist", isPlaying: true,
+                                                          bundleIdentifier: "com.google.Chrome")))
+            Log.media.notice("Now showing: \(self.island.store.title, privacy: .public)")
         case "levels":
             Log.media.notice("Levels \(WaveformLevels.shared.levels.map { String(format: "%.2f", $0) }.joined(separator: " "), privacy: .public) peak \(AudioTapEngine.shared.debugPeak, format: .fixed(precision: 4)) \(AudioTapEngine.shared.debugInfo, privacy: .public)")
         case "island.lowbattery": island.showLowBattery(20)

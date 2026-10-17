@@ -196,3 +196,24 @@ struct PlaybackReconcilerTests {
         #expect(reconciler.reconcile(next, with: report(elapsed: 120, at: start), at: start) == next)
     }
 }
+
+@Suite("Browser placeholders")
+struct PlaceholderTests {
+    @Test func siteMakingSoundIsAPlaceholder() {
+        // What Opera Air reports for a page's background sound.
+        let page = NowPlayingSnapshot(title: "A site is playing media", bundleIdentifier: "com.operasoftware.OperaAir")
+        #expect(page.isPlaceholder)
+    }
+
+    @Test func realSongsAreNot() {
+        #expect(!NowPlayingSnapshot(title: "9", artist: "Drake", album: "Views").isPlaceholder)
+        // A web player that names the artist (YouTube Music in a browser).
+        #expect(!NowPlayingSnapshot(title: "Song", artist: "Artist", bundleIdentifier: "com.google.Chrome").isPlaceholder)
+    }
+
+    @Test func lyricsSkipSongsWithoutAnArtist() async throws {
+        let client = LRCLIBClient(userAgent: "IsletTests", cacheDirectory: nil)
+        let result = try await client.lyrics(title: "A site is playing media", artist: "", album: "", duration: 0)
+        #expect(result == nil)
+    }
+}

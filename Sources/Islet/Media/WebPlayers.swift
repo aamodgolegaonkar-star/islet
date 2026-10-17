@@ -18,6 +18,17 @@ enum WebPlayers {
         "company.thebrowser.dia": .chromium,
         "com.vivaldi.Vivaldi": .chromium,
         "com.operasoftware.Opera": .chromium,
+        "com.operasoftware.OperaAir": .chromium,
+        "com.operasoftware.OperaGX": .chromium,
+        "org.chromium.Chromium": .chromium,
+        "com.sigmaos.sigmaos.macos": .chromium,
+    ]
+
+    /// Browsers without tab scripting Islet can use: known as browsers, but no service names.
+    private static let otherBrowsers: Set<String> = [
+        "org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition", "org.mozilla.nightly",
+        "app.zen-browser.zen", "com.kagi.kagimacOS", "net.waterfox.waterfox", "org.torproject.torbrowser",
+        "com.duckduckgo.macos.browser", "com.openai.atlas", "ai.perplexity.comet",
     ]
 
     /// Domains (most specific first) and the service's name.
@@ -36,7 +47,12 @@ enum WebPlayers {
         ("music.amazon.", "Amazon Music"),
     ]
 
-    static func isBrowser(_ bundle: String) -> Bool { browsers[bundle] != nil }
+    static func isBrowser(_ bundle: String) -> Bool {
+        browsers[bundle] != nil || otherBrowsers.contains(bundle)
+            // Variants and channels (Opera's many editions, Chrome Dev…).
+            || bundle.hasPrefix("com.operasoftware.") || bundle.hasPrefix("com.google.Chrome")
+            || bundle.hasPrefix("com.brave.Browser") || bundle.hasPrefix("com.microsoft.edgemac")
+    }
 
     /// The service playing `title` in the browser `bundle`, if it's one Islet knows.
     static func service(bundle: String, title: String) async -> String? {

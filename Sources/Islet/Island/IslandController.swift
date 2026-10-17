@@ -69,7 +69,7 @@ final class IslandController {
     let model: IslandModel
     var onOpenPlayer: ((CGRect?) -> Void)?
 
-    private let store: PlayerStore
+    let store: PlayerStore
     private let settings: AppSettings
     private let panel: IslandPanel
     private var monitors: [Any] = []

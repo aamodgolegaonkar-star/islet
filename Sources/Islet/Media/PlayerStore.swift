@@ -101,6 +101,7 @@ final class PlayerStore {
 
     /// Switches which player Islet follows (Settings).
     func use(_ source: PlayerSource) {
+        holding = nil
         adapter.stop()
         musicApp.stop()
         spotify.stop()
@@ -127,7 +128,10 @@ final class PlayerStore {
 
     /// The app commands go to directly, when Islet isn't using the system service.
     private var directApp: String? {
-        switch mode {
+        // Holding Music or Spotify on screen: the controls are for that player, not for
+        // whatever has the system's Now Playing slot.
+        if let holding { return holding.app }
+        return switch mode {
         case .appleMusic: "Music"
         case .spotify: "Spotify"
         case .automatic: usingFallback ? (Self.scriptableApp(snapshot?.bundleIdentifier) ?? "Music") : nil
@@ -142,6 +146,7 @@ final class PlayerStore {
     /// Reports from the apps themselves: straight through when one app is chosen; while
     /// the system service is down, whichever app is playing wins.
     private func direct(_ event: AdapterEvent, from source: String) {
+        if holding != nil { return holdUpdate(event) }
         guard mode == .automatic else {
             apply(event)
             return
@@ -315,6 +320,7 @@ final class PlayerStore {
 
     private func switchToFallback() {
         guard !usingFallback else { return }
+        holding = nil
         usingFallback = true
         adapter.stop()
         lastArtworkRevision = -1
@@ -324,7 +330,100 @@ final class PlayerStore {
         Log.media.notice("Adapter unavailable; following Music and Spotify directly")
     }
 
+    // MARK: - What's playing comes first
+
+    /// A playing Music or Spotify kept on screen while the system's Now Playing slot shows
+    /// something that isn't really playing; `other` is that report, shown once the player stops.
+    @ObservationIgnored private var holding: (other: AdapterEvent, app: String)?
+
+    /// Events from the system service. macOS gives its one Now Playing slot to whichever app
+    /// changed last, so a paused video or a page's background sound ("A site is playing
+    /// media") could push the song you're listening to off the island. Here what's actually
+    /// playing wins:
+    /// - while Music or Spotify plays, something paused, silent or a browser placeholder
+    ///   doesn't replace it (Islet follows the player directly meanwhile);
+    /// - a real song starting anywhere else does replace it;
+    /// - once the held player pauses, another song that's playing takes over, but a page's
+    ///   background sound doesn't push out your paused song.
     func apply(_ event: AdapterEvent) {
+        guard mode == .automatic, !usingFallback, !isPreview else { return present(event) }
+        let incoming: NowPlayingSnapshot? = if case let .update(track) = event { track } else { nil }
+        let playsForReal = incoming.map { $0.isPlaying && !Self.isBrowserPlaceholder($0) } ?? false
+
+        if let held = holding {
+            if let incoming, incoming.bundleIdentifier == Self.bundle(of: held.app) {
+                // The system reports the held player again: follow it; if it stopped and the
+                // other report is playing, that one is what's on now.
+                releaseHold()
+                if !incoming.isPlaying, case let .update(other) = held.other, other.isPlaying,
+                   !Self.isBrowserPlaceholder(other) {
+                    return present(held.other)
+                }
+                return present(event)
+            }
+            if playsForReal {
+                releaseHold()
+                return present(event)
+            }
+            holding?.other = event
+            return
+        }
+
+        if let current = snapshot, let app = Self.scriptableApp(current.bundleIdentifier),
+           incoming?.bundleIdentifier != current.bundleIdentifier, !playsForReal {
+            if current.isPlaying { return hold(event, behind: app) }
+            // Your paused song stays while its app is open; a page's sound isn't a song.
+            if let incoming, Self.isBrowserPlaceholder(incoming), isRunning(app) { return }
+        }
+        present(event)
+    }
+
+    /// Keeps the playing player on screen, following it directly until it stops.
+    private func hold(_ other: AdapterEvent, behind app: String) {
+        holding = (other, app)
+        Log.media.notice("Keeping \(app, privacy: .public) on screen: it's the one playing")
+        if app == "Music" { musicApp.start(pollInterval: 2) } else { spotify.start(pollInterval: 3) }
+    }
+
+    /// A report from the held player: shown while it plays. Once it pauses, another song
+    /// that's playing takes over, otherwise the paused player stays; if it quits, the other
+    /// report is shown.
+    private func holdUpdate(_ event: AdapterEvent) {
+        guard let holding else { return }
+        if case let .update(track) = event, track.isPlaying { return present(event) }
+        releaseHold()
+        // Another song playing takes over; a page's background sound doesn't replace your
+        // paused song (it would leave nothing to resume from the island).
+        if case .update(let other) = holding.other, other.isPlaying, !Self.isBrowserPlaceholder(other) {
+            present(holding.other)
+        } else if case .nothingPlaying = event, case .update = holding.other {
+            // The held player quit: show what the system reports instead.
+            present(holding.other)
+        } else {
+            present(event)
+        }
+    }
+
+    private func releaseHold() {
+        guard let holding else { return }
+        self.holding = nil
+        if holding.app == "Music" { musicApp.stop() } else { spotify.stop() }
+    }
+
+    /// A browser's "A site is playing media": a page making sound, not a song.
+    private static func isBrowserPlaceholder(_ track: NowPlayingSnapshot) -> Bool {
+        guard track.isPlaceholder else { return false }
+        // Browsers say "A site is playing media" (or "…is playing audio").
+        let title = track.title.lowercased()
+        return WebPlayers.isBrowser(track.bundleIdentifier)
+            || title.contains("is playing media") || title.contains("is playing audio")
+    }
+
+    private static func bundle(of app: String) -> String {
+        app == "Music" ? "com.apple.Music" : SpotifySource.bundleID
+    }
+
+    private func present(_ event: AdapterEvent) {
         guard case let .update(incoming) = event else {
             if snapshot != nil { snapshot = nil }
             lastTrackKey = nil
@@ -366,7 +465,7 @@ final class PlayerStore {
         hiResArtwork = nil
         motion = nil
         webService = nil
-        if WebPlayers.isBrowser(track.bundleIdentifier), !isPreview {
+        if WebPlayers.isBrowser(track.bundleIdentifier), !track.isPlaceholder, !isPreview {
             let (bundle, title, key) = (track.bundleIdentifier, track.title, track.trackKey)
             Task { [weak self] in
                 // The tab's title catches up with the song a moment after it starts.
@@ -379,6 +478,11 @@ final class PlayerStore {
         lyrics = .loading
         lyricsTask?.cancel()
         lookupTask?.cancel()
+        // Nothing to look up for a browser's "A site is playing media".
+        guard !track.isPlaceholder else {
+            lyrics = .unavailable
+            return
+        }
 
         let key = track.trackKey
         let (title, artist, album, duration) = (track.title, track.artist, track.album, track.duration)

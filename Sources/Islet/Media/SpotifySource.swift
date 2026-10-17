@@ -73,7 +73,9 @@ final class SpotifySource {
     }
 
     private func handle(_ output: String?) {
-        guard let output, output != "STOPPED" else {
+        // No answer (Spotify busy, or Islet not allowed to ask it) isn't "stopped".
+        guard let output else { return }
+        guard output != "STOPPED" else {
             setPlaying(false)
             onEvent?(.nothingPlaying)
             return

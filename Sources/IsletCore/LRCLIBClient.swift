@@ -51,6 +51,9 @@ public actor LRCLIBClient {
     }
 
     public func lyrics(title: String, artist: String, album: String, duration: TimeInterval) async throws -> LyricsContent? {
+        // The service needs both; a browser's "A site is playing media" has no artist.
+        guard !title.trimmingCharacters(in: .whitespaces).isEmpty,
+              !artist.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         let key = Self.cacheKey(title: title, artist: artist, album: album, duration: duration)
         if let cached = memory[key] { return cached }
         if let cached = readDisk(key) {
@@ -109,7 +112,8 @@ public actor LRCLIBClient {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         switch status {
         case 200: return try JSONDecoder().decode(T.self, from: data)
-        case 404: return nil
+        // 400: the service can't use this song's details; asking again won't change that.
+        case 400, 404: return nil
         case 429:
             let retry = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
             throw Failure.rateLimited(retryAfter: retry)

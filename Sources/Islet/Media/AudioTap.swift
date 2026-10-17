@@ -46,7 +46,9 @@ final class AudioTapEngine {
         guard new != wants else { return }
         wants = new
         failedFor = nil
-        scheduleRebuild(delay: 0)
+        // Coalesced: building a tap makes a private audio device on the output, and a
+        // quick run of changes (a track change, the island opening) shouldn't each do it.
+        scheduleRebuild(delay: 0.8)
     }
 
     func setEqualizer(bands: [Double], preamp: Double) {
@@ -73,14 +75,12 @@ final class AudioTapEngine {
     private func rebuild() {
         watchSystem()
         var active = wants.target != nil && (wants.equalizer || wants.levels) && failedFor != wants
-        var wants = self.wants
+        let wants = self.wants
         if active, AudioCapturePermission.status != .granted {
-            // Without permission a tap hears silence, and an equalizer tap would mute the
-            // app. The prompt comes from Core Audio when a tap starts, so start a harmless
-            // listening-only tap to bring it up, then rebuild once the answer is yes.
-            wants.equalizer = false
-            wants.levels = true
-            if AudioCapturePermission.status == .denied { active = false }
+            // Without permission a tap hears silence (and an equalizer tap would mute the
+            // app), and no prompt comes for a self-signed app. Make none: wait for the
+            // switch in Privacy & Security, then build.
+            active = false
             watchPermission()
         }
         let processes = active ? Self.processes(for: wants.target ?? "") : []
@@ -102,9 +102,15 @@ final class AudioTapEngine {
     private func watchPermission() {
         guard permissionWatch == nil else { return }
         permissionWatch = Task { @MainActor [weak self] in
-            for _ in 0..<90 {
-                try? await Task.sleep(for: .seconds(2))
+            // Until the switch is turned on (checked every 3 s; a cheap local lookup).
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
                 guard let self, !Task.isCancelled else { return }
+                // Waveform and equalizer turned off: nothing to wait for.
+                guard self.wants.target != nil, self.wants.equalizer || self.wants.levels else {
+                    self.permissionWatch = nil
+                    return
+                }
                 if AudioCapturePermission.status == .granted {
                     Log.media.notice("Audio Recording access granted")
                     self.permissionWatch = nil

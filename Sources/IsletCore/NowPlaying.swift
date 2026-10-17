@@ -46,6 +46,12 @@ public struct NowPlayingSnapshot: Sendable, Equatable {
         self.uniqueIdentifier = uniqueIdentifier
     }
 
+    /// A browser's stand-in for a page making sound ("A site is playing media"): no artist
+    /// or album, nothing to show or look up.
+    public var isPlaceholder: Bool {
+        artist.trimmingCharacters(in: .whitespaces).isEmpty && album.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     /// Identity of the song; position and artwork updates do not change it.
     public var trackKey: String {
         [title, artist, album].joined(separator: "\u{1F}")
