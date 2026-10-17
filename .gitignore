@@ -12,3 +12,4 @@ Vendor/mediaremote-adapter/
 *.xcuserstate
 xcuserdata/
 .swiftpm/
+CLAUDE.local.md
