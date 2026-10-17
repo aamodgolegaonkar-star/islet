@@ -83,17 +83,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             island?.showLowBattery(percent)
         }
         MediaKeys.shared.onKey = { [weak island, weak store] key, fine in
-            guard let island, let store else { return false }
+            guard let island, let store else { return }
             switch key {
             case .volumeUp, .volumeDown, .mute:
                 let direction = key == .volumeUp ? 1 : key == .volumeDown ? -1 : 0
                 let level = store.stepVolume(direction, fine: fine)
                 island.showLevel(LevelHUD(kind: .volume, value: level.volume, muted: level.muted))
             case .brightnessUp, .brightnessDown:
-                guard let value = BrightnessMonitor.shared.step(key == .brightnessUp ? 1 : -1, fine: fine) else { return false }
+                guard let value = BrightnessMonitor.shared.step(key == .brightnessUp ? 1 : -1, fine: fine) else {
+                    return MediaKeys.shared.brightnessUnavailable()
+                }
                 island.showLevel(LevelHUD(kind: .brightness, value: value))
             }
-            return true
         }
         if settings.replaceSystemIndicator { MediaKeys.shared.setEnabled(true) }
         island.model.onAgentTap = { [weak island] alert in

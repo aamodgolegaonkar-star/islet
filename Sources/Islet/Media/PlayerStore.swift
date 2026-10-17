@@ -203,11 +203,17 @@ final class PlayerStore {
             return (volume, muted)
         }
         let step = fine ? 1.0 / 64 : 1.0 / 16
-        let next = min(max(((volume / step).rounded() + Double(direction)) * step, 0), 1)
+        // Step from the device's real level, which may have changed without Islet noticing,
+        // except mid-run of presses: the previous write may still be in flight.
+        let now = ProcessInfo.processInfo.systemUptime
+        let base = now - lastVolumeStepAt < 0.5 ? volume : Double(systemVolume.volume ?? Float(volume))
+        lastVolumeStepAt = now
+        let next = min(max(((base / step).rounded() + Double(direction)) * step, 0), 1)
         if systemVolume.muted { systemVolume.setMuted(false) }
         setVolume(next)
         return (next, false)
     }
+    private var lastVolumeStepAt: TimeInterval = 0
 
     func setVolume(_ value: Double) {
         volume = min(max(value, 0), 1)
