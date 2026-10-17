@@ -1,0 +1,293 @@
+import IsletCore
+import SwiftUI
+
+/// Volume or brightness: the glyph, a glass level bar and the percentage, sized to the
+/// pill like the iPhone's Dynamic Island volume indicator.
+/// Volume or brightness: the glyph, Apple's own slider and the percentage, sized to the
+/// pill like the iPhone's Dynamic Island volume indicator. The slider is drawn by AppKit,
+/// so it moves smoothly however fast the level changes, and it can be dragged.
+struct LevelContent: View {
+    /// Read here (not by the island) so a change of level redraws only this pill's content.
+    let model: IslandModel
+    private var hud: LevelHUD { model.level }
+    /// Beside a notch: icon and percentage in the wings, the slider in a strip below the notch.
+    var notchHeight: CGFloat?
+
+    var body: some View {
+        Group {
+            if let notchHeight {
+                VStack(spacing: 0) {
+                    HStack {
+                        glyph
+                        Spacer()
+                        percentage
+                    }
+                    .frame(height: notchHeight)
+                    bar.padding(.bottom, 4)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    glyph
+                    bar
+                    percentage
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+    }
+
+    private var glyph: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.white)
+            .contentTransition(.symbolEffect(.replace))
+            .frame(width: 22)
+    }
+
+    private var bar: some View {
+        GlassSlider(value: shown, tint: hud.kind == .brightness ? .yellow : .white, restHeight: 4, thumb: .always,
+                    onEditingChanged: { model.isInteracting = $0 },
+                    onChange: { drag(to: $0) }, onCommit: { drag(to: $0) })
+    }
+
+    private func drag(to value: Double) {
+        model.level.value = value
+        model.level.muted = false
+        model.onLevelDrag(hud.kind, value)
+    }
+
+    private var percentage: some View {
+        Text("\(Int((shown * 100).rounded()))")
+            .font(.system(size: 12, weight: .semibold).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.8))
+            .frame(width: 26, alignment: .trailing)
+            .contentTransition(.numericText())
+    }
+
+    private var shown: Double { hud.muted ? 0 : min(max(hud.value, 0), 1) }
+
+    private var symbol: String {
+        switch hud.kind {
+        case .brightness: hud.value < 0.5 ? "sun.min.fill" : "sun.max.fill"
+        case .volume:
+            if hud.muted || hud.value == 0 { "speaker.slash.fill" }
+            else if hud.value < 0.34 { "speaker.wave.1.fill" }
+            else if hud.value < 0.67 { "speaker.wave.2.fill" }
+            else { "speaker.wave.3.fill" }
+        }
+    }
+}
+
+/// Headphones just connected: the model's picture, the name its owner gave it, and battery
+/// (left, right and case for earbuds; one level for over-ears) when the device reports it.
+struct HeadphoneContent: View {
+    let card: HeadphoneCard
+    @State private var appeared = false
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Headphone3DView(model: card.model)
+                .frame(width: 86, height: 86)
+                .scaleEffect(appeared ? 1 : 0.4)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(card.deviceName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            batteries
+        }
+        .padding(.horizontal, 20)
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.62).delay(0.05)) { appeared = true }
+        }
+    }
+
+    /// "AirPods Max · Connected" — or just "Connected" when the name already says the model.
+    private var subtitle: String {
+        guard let model = card.model?.name,
+              !card.deviceName.localizedCaseInsensitiveContains(model) else { return "Connected" }
+        return "\(model) · Connected"
+    }
+
+    @ViewBuilder
+    private var batteries: some View {
+        let battery = card.battery
+        HStack(spacing: 8) {
+            if let left = battery.left { ring(left, label: "L") }
+            if let right = battery.right { ring(right, label: "R") }
+            if let box = battery.case { ring(box, label: "Case") }
+            if battery.left == nil, battery.right == nil, let single = battery.single { ring(single, label: nil) }
+        }
+    }
+
+    private func ring(_ percent: Int, label: String?) -> some View {
+        VStack(spacing: 3) {
+            ZStack {
+                Circle().stroke(.white.opacity(0.18), lineWidth: 3)
+                Circle()
+                    .trim(from: 0, to: appeared ? Double(percent) / 100 : 0)
+                    .stroke(percent <= 20 ? Color.red : Color.green, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Text("\(percent)")
+                    .font(.system(size: 9, weight: .bold).monospacedDigit())
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 28, height: 28)
+            if let label {
+                Text(label).font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.55))
+            }
+        }
+        .animation(.easeOut(duration: 0.8).delay(0.2), value: appeared)
+    }
+}
+
+/// Claude Code or Codex needs attention: a coloured badge for what it wants, the title, and
+/// the project and message. Clicking it brings the agent's terminal forward.
+struct AgentContent: View {
+    let alert: AgentAlert
+    let tap: () -> Void
+    @State private var appeared = false
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().fill(tint.gradient)
+                Image(systemName: symbol)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .symbolEffect(.bounce, value: appeared)
+            }
+            .frame(width: 44, height: 44)
+            .scaleEffect(appeared ? 1 : 0.5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(alert.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                if !alert.subtitle.isEmpty {
+                    Text(alert.subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.62))
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .contentShape(Rectangle())
+        .routedClick("agent", action: tap)
+        .onTapGesture(perform: tap)
+        .onAppear {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.6)) { appeared = true }
+        }
+    }
+
+    private var symbol: String {
+        switch alert.event.kind {
+        case .permission: "hand.raised.fill"
+        case .waiting: "ellipsis.bubble.fill"
+        case .done: "checkmark"
+        }
+    }
+
+    private var tint: Color {
+        switch alert.event.kind {
+        case .permission: .orange
+        case .waiting: .blue
+        case .done: .green
+        }
+    }
+}
+
+/// Battery at 20% or 10%: the charging card in reverse, in red.
+struct LowBatteryContent: View {
+    let percent: Int
+    /// Beside a notch the label won't fit in a wing: icon left, percentage right.
+    var besideNotch = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "battery.25percent")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.red)
+                .symbolEffect(.pulse, options: .repeat(2))
+            if !besideNotch {
+                Text("Low Battery")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            Spacer(minLength: 6)
+            Text("\(percent)%")
+                .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.red)
+        }
+        .padding(.horizontal, 14)
+    }
+}
+
+/// A running timer in the compact island: icon at the leading edge, time at the trailing.
+struct TimerCompactContent: View {
+    let end: Date
+    @State private var now = Date()
+
+    var body: some View {
+        HStack {
+            Image(systemName: "timer")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.orange)
+            Spacer(minLength: 0)
+            Text(remaining)
+                .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.orange)
+                .contentTransition(.numericText(countsDown: true))
+        }
+        .padding(.horizontal, 12)
+        // One redraw per second, on the second (no animation timeline).
+        .task(id: end) {
+            while !Task.isCancelled {
+                now = Date()
+                let left = end.timeIntervalSince(now)
+                guard left > 0 else { return }
+                let fraction = left - left.rounded(.down)
+                try? await Task.sleep(for: .seconds(fraction > 0.01 ? fraction : 1), tolerance: .milliseconds(20))
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: remaining)
+    }
+
+    private var remaining: String {
+        let seconds = max(0, Int(end.timeIntervalSince(now).rounded(.up)))
+        let h = seconds / 3600, m = seconds / 60 % 60, s = seconds % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+}
+
+struct TimerDoneContent: View {
+    /// Beside a notch: icon in the left wing, "Done" in the right.
+    var besideNotch = false
+    @State private var ring = 0
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "timer")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.orange)
+                .symbolEffect(.bounce, value: ring)
+            if besideNotch { Spacer(minLength: 0) }
+            Text(besideNotch ? "Done" : "Timer Done")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+            if !besideNotch { Spacer(minLength: 0) }
+        }
+        .padding(.horizontal, 14)
+        .onAppear { ring += 1 }
+    }
+}

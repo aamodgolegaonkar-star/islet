@@ -1,0 +1,14 @@
+# Build output
+.build/
+build/
+*.profraw
+
+# Cloned at a pinned commit by scripts/build-app.sh
+Vendor/mediaremote-adapter/
+
+# Local tooling and macOS clutter
+.claude-flow/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+.swiftpm/
