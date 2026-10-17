@@ -460,11 +460,16 @@ struct LoopingVideoView: NSViewRepresentable {
             playerLayer.player = player
             playerLayer.opacity = 0
             // Fade in only once a frame is ready, so slow networks show the still cover.
-            readyObservation = playerLayer.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] layer, _ in
+            readyObservation = Self.whenReady(playerLayer) { [weak self] in self?.fadeIn() }
+        }
+
+        /// AVFoundation may report readiness on any thread; formed outside the main actor
+        /// so Swift's isolation check can't trap there, and hops to the main thread itself.
+        private nonisolated static func whenReady(_ layer: AVPlayerLayer,
+                                                  then ready: @escaping @MainActor @Sendable () -> Void) -> NSKeyValueObservation {
+            layer.observe(\.isReadyForDisplay, options: [.initial, .new]) { layer, _ in
                 guard layer.isReadyForDisplay else { return }
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated { self?.fadeIn() }
-                }
+                DispatchQueue.main.async { MainActor.assumeIsolated { ready() } }
             }
         }
 

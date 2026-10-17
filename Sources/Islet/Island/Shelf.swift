@@ -163,7 +163,7 @@ struct ShelfView: View {
     private func tabButton(_ title: String, symbol: String, tab: Tab) -> some View {
         let selected = self.tab == tab
         let select = { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { self.tab = tab } }
-        return Button(action: ClickRouter.guarded(router, "shelf.tab.\(title)", select)) {
+        return RoutedButton("shelf.tab.\(title)", action: select) {
             Label(title, systemImage: symbol)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(selected ? 1 : 0.55))
@@ -171,8 +171,6 @@ struct ShelfView: View {
                 .padding(.vertical, 4)
                 .background(Capsule().fill(.white.opacity(selected ? 0.16 : 0)))
         }
-        .buttonStyle(.plain)
-        .routedClick("shelf.tab.\(title)", action: select)
     }
 
     private var dropZone: some View {

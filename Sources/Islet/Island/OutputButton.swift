@@ -10,12 +10,8 @@ struct OutputButton: View {
     private var status: OutputStatus { .shared }
 
     var body: some View {
-        Button(action: ClickRouter.guarded(router, id, open)) {
-            content
-        }
-        .buttonStyle(.plain)
-        .background(ShareAnchor(holder: anchor))
-        .routedClick(id, action: open)
+        RoutedButton(id, action: open) { content }
+            .background(ShareAnchor(holder: anchor))
         .help(status.name.isEmpty ? "Sound Output" : "Playing on \(status.name)")
         .onAppear { status.refresh() }
     }

@@ -26,9 +26,15 @@ done
 
 pkill -x Islet || true
 sleep 1
+# Each installed copy's top folder is left read-only: tools that write into the folder
+# they run in (Claude Code's ruflo hooks, when a session starts in Islet.app) can't add
+# files beside Contents, which would break the code signature and with it Islet's
+# permissions. Islet makes it writable again before a Sparkle update moves it.
 for installed in /Applications/Islet*.app; do
     [ -e "$installed" ] || continue
+    chmod u+w "$installed"
     rsync -a --delete "$APP/" "$installed/"
+    chmod a-w "$installed"
     echo "Updated $installed"
 done
 open /Applications/Islet.app

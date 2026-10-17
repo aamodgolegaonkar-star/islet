@@ -139,18 +139,16 @@ struct IslandPillButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: ClickRouter.guarded(router, id, action)) {
+        RoutedButton(id, action: action) {
             Group {
                 if let label { Label(label, systemImage: symbol) } else { Image(systemName: symbol) }
             }
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.white.opacity(0.85))
         }
-        .buttonStyle(.plain)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(Capsule().fill(.white.opacity(0.12)))
-        .routedClick(id, action: action)
         .help(help)
     }
 }

@@ -200,6 +200,19 @@ final class UpdateFeed: NSObject, SPUUpdaterDelegate, @preconcurrency SPUStandar
 
     var supportsGentleScheduledUpdateReminders: Bool { true }
 
+    /// On the developer's Mac the app folder is kept read-only (scripts/sync-local.sh), so
+    /// tools can't drop files beside Contents and break the signature. The installer has to
+    /// move the old app aside, which needs it writable again.
+    func updater(_ updater: SPUUpdater, didExtractUpdate item: SUAppcastItem) { makeAppWritable() }
+    func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) { makeAppWritable() }
+
+    private func makeAppWritable() {
+        let path = Bundle.main.bundlePath
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+              let mode = (attributes[.posixPermissions] as? NSNumber)?.intValue, mode & 0o200 == 0 else { return }
+        try? FileManager.default.setAttributes([.posixPermissions: mode | 0o200], ofItemAtPath: path)
+    }
+
     func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem,
                                                   state: SPUUserUpdateState) {
         guard handleShowingUpdate, !state.userInitiated else { return }

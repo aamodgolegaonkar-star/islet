@@ -153,7 +153,7 @@ enum Page: Int, CaseIterable {
         case .activities: "Charging, headphones connecting, timers and low battery pop up in the island, and a dot shows when the mic or camera is on."
         case .levels: "Islet replaces the macOS volume and brightness indicator. Show it in the island or as a slider on either edge of the screen (Live Activities → Position)."
         case .controls: "Click the speaker button in the open island to switch between speakers, AirPods, HomePod or paired headphones, and set AirPods noise control."
-        case .sound: "Shape Apple Music and Spotify with a 10-band equalizer, and let the island's bars follow the real music (Music & Lyrics → Sound)."
+        case .sound: "Shape Apple Music and Spotify with a 10-band equalizer, and let the island's bars follow the real music. Turn them on in Music & Lyrics → Sound, then allow Islet once in Privacy & Security."
         case .shelf: "Drag files onto the island to keep them handy. The Clipboard tab keeps what you copied; click a card to copy it again."
         case .webPlayers: "Playing in a browser? Islet names the service: YouTube Music, Deezer, Qobuz, Tidal, SoundCloud and more."
         case .lock: "Your music stays on the lock screen. A wrong finger shakes the padlock; the right one opens it."

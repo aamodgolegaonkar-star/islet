@@ -99,10 +99,20 @@ struct AudioAccessRow: View {
     @State private var granted = AudioCapturePermission.status == .granted
 
     var body: some View {
-        HStack {
-            Label(granted ? "Audio access allowed" : "Islet needs System Audio Recording access",
-                  systemImage: granted ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(granted ? AnyShapeStyle(.green) : AnyShapeStyle(.orange))
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 3) {
+                Label(granted ? "Audio access allowed" : "Islet needs System Audio Recording access",
+                      systemImage: granted ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(granted ? AnyShapeStyle(.green) : AnyShapeStyle(.orange))
+                if !granted {
+                    // macOS asks only apps signed by a registered developer, so this is a
+                    // one-time switch instead of a prompt.
+                    Text("In Privacy Settings, turn on Islet under System Audio Recording Only. If it isn't listed, click + and choose Islet from Applications.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             Spacer()
             if !granted {
                 Button("Open Privacy Settings") {

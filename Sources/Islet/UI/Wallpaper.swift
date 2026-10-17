@@ -203,6 +203,27 @@ extension View {
     }
 }
 
+/// A button for Islet's panels with the click routing built in. Use it instead of a plain
+/// `Button`, which may ignore clicks in a window that never activates the app.
+struct RoutedButton<Label: View>: View {
+    let id: String
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+    @Environment(\.clickRouter) private var router
+
+    init(_ id: String, action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
+        self.id = id
+        self.action = action
+        self.label = label
+    }
+
+    var body: some View {
+        Button(action: ClickRouter.guarded(router, id, action), label: label)
+            .buttonStyle(.plain)
+            .routedClick(id, action: action)
+    }
+}
+
 private struct RoutedClick: ViewModifier {
     let id: String
     let enabled: Bool
