@@ -15,8 +15,43 @@ final class OnboardingController {
         self.openSettings = openSettings
     }
 
+    /// The whole tutorial: every feature.
     func show() {
-        let window = self.window ?? makeWindow()
+        present(pages: Page.full, whatsNew: nil)
+    }
+
+    /// Only what's new since `version` (the last release whose tutorial was seen).
+    func showWhatsNew(since version: String) {
+        let pages = Page.added(after: version)
+        guard !pages.isEmpty else { return }
+        present(pages: [.whatsNew] + pages + [.done], whatsNew: Self.currentVersion)
+    }
+
+    /// From the menu: the latest release's features, whenever asked.
+    func showLatest() {
+        let releases = Set(Page.allCases.compactMap(\.since))
+        guard let latest = releases.max(by: { Page.isVersion($1, newerThan: $0) }) else { return show() }
+        let pages = Page.allCases.filter { $0.since == latest }
+        present(pages: [.whatsNew] + pages + [.done], whatsNew: latest)
+    }
+
+    /// After an update: the new features' pages, once per release.
+    func showWhatsNewIfUpdated() {
+        let current = Self.currentVersion
+        // Before this was tracked, everyone who had finished the tutorial was on 1.5.4 or 1.6.0.
+        let seen = settings.tutorialVersion ?? (settings.onboardingDone ? "1.5.4" : current)
+        settings.tutorialVersion = current
+        guard Page.isVersion(current, newerThan: seen) else { return }
+        showWhatsNew(since: seen)
+    }
+
+    static var currentVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+    }
+
+    private func present(pages: [Page], whatsNew: String?) {
+        if let window { window.close() }
+        let window = makeWindow(pages: pages, whatsNew: whatsNew)
         self.window = window
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
@@ -25,13 +60,14 @@ final class OnboardingController {
     /// Seen; and a closed tutorial keeps nothing alive (its demos animate constantly).
     private func closed() {
         settings.onboardingDone = true
+        settings.tutorialVersion = Self.currentVersion
         if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
         closeObserver = nil
         window?.contentView = nil
         window = nil
     }
 
-    private func makeWindow() -> NSWindow {
+    private func makeWindow(pages: [Page], whatsNew: String?) -> NSWindow {
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 760, height: 540),
                               styleMask: [.titled, .closable, .fullSizeContentView],
                               backing: .buffered, defer: false)
@@ -41,6 +77,7 @@ final class OnboardingController {
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: OnboardingView(
+            pages: pages, whatsNew: whatsNew,
             finish: { [weak window] in window?.close() },
             openSettings: { [weak self, weak window] in
                 window?.close()
@@ -56,16 +93,52 @@ final class OnboardingController {
     }
 }
 
+/// One page of the tutorial: a feature, its live demo, and the release it arrived in.
+/// When a release adds a feature, it gets a page here with `since` set to that version:
+/// the full tutorial shows every page, and after updating, "What's New" shows the new ones.
 enum Page: Int, CaseIterable {
-    case welcome, island, feel, player, lock, done
+    case welcome, whatsNew
+    case island, feel, player, activities, levels, controls, sound, shelf, webPlayers, lock, lockWidgets, agents
+    case done
+
+    /// The full tutorial, in order.
+    static var full: [Page] { allCases.filter { $0 != .whatsNew } }
+
+    /// Feature pages added in releases after `version`.
+    static func added(after version: String) -> [Page] {
+        allCases.filter { page in page.since.map { isVersion($0, newerThan: version) } ?? false }
+    }
+
+    static func isVersion(_ a: String, newerThan b: String) -> Bool {
+        a.compare(b, options: .numeric) == .orderedDescending
+    }
+
+    /// The release that introduced the feature (nil: not a feature page).
+    var since: String? {
+        switch self {
+        case .welcome, .whatsNew, .done: nil
+        case .island, .feel, .player, .lock, .agents, .activities: "1.0"
+        case .controls, .sound, .levels, .webPlayers, .lockWidgets: "1.6.0"
+        case .shelf: "1.6.0"
+        }
+    }
 
     var title: String {
         switch self {
         case .welcome: "Welcome to Islet"
+        case .whatsNew: "What's New in Islet"
         case .island: "Your music lives in the island"
         case .feel: "Controls you can feel"
         case .player: "A full-screen player"
+        case .activities: "Live activities"
+        case .levels: "Volume and brightness, your way"
+        case .controls: "Pick where sound plays"
+        case .sound: "Equalizer and live waveform"
+        case .shelf: "A shelf for files and copies"
+        case .webPlayers: "Web players, by name"
         case .lock: "Made for the lock screen"
+        case .lockWidgets: "Lock-screen widgets"
+        case .agents: "Your coding agents, in the island"
         case .done: "You're all set"
         }
     }
@@ -73,19 +146,32 @@ enum Page: Int, CaseIterable {
     var subtitle: String {
         switch self {
         case .welcome: "A Dynamic Island for your Mac, in real Liquid Glass."
+        case .whatsNew: "Here's what this update adds. It only takes a moment."
         case .island: "Hover over the island at the top of your screen to open it. Try this one."
         case .feel: "Sliders click through detents like a dial on your trackpad. Drag this one."
         case .player: "Click the artwork in the island for the full-screen player, with synced lyrics."
+        case .activities: "Charging, headphones connecting, timers and low battery pop up in the island, and a dot shows when the mic or camera is on."
+        case .levels: "Islet replaces the macOS volume and brightness indicator. Show it in the island or as a slider on either edge of the screen (Live Activities → Position)."
+        case .controls: "Click the speaker button in the open island to switch between speakers, AirPods, HomePod or paired headphones, and set AirPods noise control."
+        case .sound: "Shape Apple Music and Spotify with a 10-band equalizer, and let the island's bars follow the real music (Music & Lyrics → Sound)."
+        case .shelf: "Drag files onto the island to keep them handy. The Clipboard tab keeps what you copied; click a card to copy it again."
+        case .webPlayers: "Playing in a browser? Islet names the service: YouTube Music, Deezer, Qobuz, Tidal, SoundCloud and more."
         case .lock: "Your music stays on the lock screen. A wrong finger shakes the padlock; the right one opens it."
-        case .done: "Everything can be tuned in Settings: island size, glass, haptics and more."
+        case .lockWidgets: "Weather, battery, volume and your headphones' battery under the clock, with motion artwork behind them."
+        case .agents: "Claude Code and Codex tell you in the island when they need you or finish. Click to jump to the terminal."
+        case .done: "Everything can be tuned in Settings: island size, glass, sound, haptics and more."
         }
     }
 }
 
 struct OnboardingView: View {
+    let pages: [Page]
+    /// Set for "What's New": the version being introduced.
+    let whatsNew: String?
     let finish: () -> Void
     let openSettings: () -> Void
-    @State private var page = Page.welcome
+    @State private var index = 0
+    private var page: Page { pages[index] }
     @State private var forward = true
     @State private var drift = false
 
@@ -97,7 +183,7 @@ struct OnboardingView: View {
             background
             VStack(spacing: 0) {
                 ZStack {
-                    PageView(page: page)
+                    PageView(page: page, version: whatsNew, newPages: pages.filter { $0.since != nil })
                         .id(page)
                         .transition(zoom)
                 }
@@ -150,28 +236,28 @@ struct OnboardingView: View {
         HStack {
             Button("Back") { go(-1) }
                 .buttonStyle(.glass)
-                .opacity(page == .welcome ? 0 : 1)
-                .disabled(page == .welcome)
+                .opacity(index == 0 ? 0 : 1)
+                .disabled(index == 0)
             Spacer()
             HStack(spacing: 8) {
-                ForEach(Page.allCases, id: \.self) { item in
+                ForEach(pages.indices, id: \.self) { item in
                     Capsule()
-                        .fill(.white.opacity(item == page ? 0.95 : 0.3))
-                        .frame(width: item == page ? 22 : 7, height: 7)
+                        .fill(.white.opacity(item == index ? 0.95 : 0.3))
+                        .frame(width: item == index ? 22 : 7, height: 7)
                         .onTapGesture { jump(to: item) }
                 }
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.75), value: page)
             Spacer()
-            if page == .done {
+            if index == pages.count - 1 {
                 HStack(spacing: 10) {
                     Button("Open Settings") { openSettings() }
                         .buttonStyle(.glass)
-                    Button("Start Listening") { finish() }
+                    Button(whatsNew == nil ? "Start Listening" : "Got It") { finish() }
                         .buttonStyle(.glassProminent)
                 }
             } else {
-                Button(page == .welcome ? "Get Started" : "Continue") { go(+1) }
+                Button(index == 0 ? (whatsNew == nil ? "Get Started" : "Show Me") : "Continue") { go(+1) }
                     .buttonStyle(.glassProminent)
                     .keyboardShortcut(.defaultAction)
             }
@@ -180,19 +266,22 @@ struct OnboardingView: View {
     }
 
     private func go(_ step: Int) {
-        guard let next = Page(rawValue: page.rawValue + step) else { return }
+        let next = index + step
+        guard pages.indices.contains(next) else { return }
         jump(to: next)
     }
 
-    private func jump(to next: Page) {
-        guard next != page else { return }
-        forward = next.rawValue > page.rawValue
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) { page = next }
+    private func jump(to next: Int) {
+        guard next != index else { return }
+        forward = next > index
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) { index = next }
     }
 }
 
 private struct PageView: View {
     let page: Page
+    var version: String?
+    var newPages: [Page] = []
     @State private var shown = false
 
     var body: some View {
@@ -204,7 +293,7 @@ private struct PageView: View {
                 .blur(radius: shown ? 0 : 14)
                 .opacity(shown ? 1 : 0)
             VStack(spacing: 10) {
-                Text(page.title)
+                Text(page == .whatsNew ? "What's New in Islet \(version ?? "")" : page.title)
                     .font(.system(size: 30, weight: .bold))
                 Text(page.subtitle)
                     .font(.system(size: 15))
@@ -226,10 +315,19 @@ private struct PageView: View {
     private var hero: some View {
         switch page {
         case .welcome: WelcomeHero()
+        case .whatsNew: WhatsNewHero(pages: newPages)
         case .island: IslandDemo()
         case .feel: FeelDemo()
         case .player: PlayerDemo()
+        case .activities: ActivitiesDemo()
+        case .levels: LevelsDemo()
+        case .controls: OutputDemo()
+        case .sound: SoundDemo()
+        case .shelf: ShelfDemo()
+        case .webPlayers: WebPlayerDemo()
         case .lock: LockDemo()
+        case .lockWidgets: LockWidgetsDemo()
+        case .agents: AgentDemo()
         case .done: DoneHero()
         }
     }

@@ -13,6 +13,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     /// Opens the Settings window (set by the app delegate).
     var openSettings: () -> Void = {}
     var checkForUpdates: () -> Void = {}
+    var whatsNew: () -> Void = {}
     var timerRunning: () -> Bool = { false }
     var startTimer: (Int) -> Void = { _ in }
     var cancelTimer: () -> Void = {}
@@ -41,6 +42,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(action("Open Now Playing", #selector(openPlayerAction), key: "p"))
         menu.addItem(action("Settings…", #selector(openSettingsAction), key: ","))
         menu.addItem(action("Check for Updates…", #selector(checkForUpdatesAction)))
+        menu.addItem(action("What's New…", #selector(whatsNewAction)))
         let timer = NSMenu()
         for minutes in [1, 3, 5, 10, 15, 25, 30, 45, 60] {
             let entry = action(minutes == 60 ? "1 hour" : "\(minutes) min", #selector(startTimerAction(_:)))
@@ -127,6 +129,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc private func openPlayerAction() { openPlayer() }
     @objc private func openSettingsAction() { openSettings() }
     @objc private func checkForUpdatesAction() { checkForUpdates() }
+    @objc private func whatsNewAction() { whatsNew() }
     @objc private func startTimerAction(_ sender: NSMenuItem) { startTimer(sender.tag) }
     @objc private func cancelTimerAction() { cancelTimer() }
     @objc private func toggleHover() { settings.expandOnHover.toggle() }

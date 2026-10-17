@@ -119,12 +119,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updater: updater.updater)
         statusMenu.openSettings = { [weak self] in self?.settingsWindow.show() }
         statusMenu.checkForUpdates = { [weak self] in self?.updater.checkForUpdates(nil) }
+        statusMenu.whatsNew = { [weak self] in self?.onboarding.showLatest() }
         statusMenu.timerRunning = { [weak island] in island?.timerRunning ?? false }
         statusMenu.startTimer = { [weak island] minutes in island?.startTimer(minutes: minutes) }
         statusMenu.cancelTimer = { [weak island] in island?.cancelTimer() }
         debugTools?.openSettings = { [weak self] in self?.settingsWindow.show() }
         debugTools?.openTutorial = { [weak self] in self?.onboarding.show() }
-        if !settings.onboardingDone { onboarding.show() }
+        if !settings.onboardingDone { onboarding.show() } else { onboarding.showWhatsNewIfUpdated() }
         PowerMonitor.shared.start()
         WaveformLevels.shared.onViewersChanged = { [weak self] in self?.updateAudioTap() }
         updateAudioTap()

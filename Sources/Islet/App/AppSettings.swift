@@ -274,6 +274,10 @@ final class AppSettings {
     var lockMotionBackground: Bool {
         didSet { defaults.set(lockMotionBackground, forKey: Key.lockMotion) }
     }
+    /// The release whose tutorial was last seen; "What's New" covers anything newer.
+    var tutorialVersion: String? {
+        didSet { defaults.set(tutorialVersion, forKey: "tutorialVersion") }
+    }
     /// The first-launch tutorial has been seen.
     var onboardingDone: Bool {
         didSet { defaults.set(onboardingDone, forKey: Key.onboarded) }
@@ -366,6 +370,7 @@ final class AppSettings {
         lockWeather = defaults.bool(forKey: Key.lockWeather)
         lockHeadphones = defaults.bool(forKey: Key.lockHeadphones)
         lockMotionBackground = defaults.bool(forKey: Key.lockMotion)
+        tutorialVersion = defaults.string(forKey: "tutorialVersion")
         ClipboardHistory.shared.isEnabled = clipboardHistory
         // didSet doesn't run in init: publish the loaded values to the live views.
         let live = LiveTuning.shared
