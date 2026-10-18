@@ -4,7 +4,7 @@ import SwiftUI
 extension View {
     /// A Liquid Glass tile over the wallpaper that is really behind it.
     @MainActor
-    func lockGlass<S: Shape>(_ shape: S, glass: Glass? = nil) -> some View {
+    func lockGlass<S: Shape>(_ shape: S, glass: IsletGlass? = nil) -> some View {
         self
             .snapshotSafeGlass(glass ?? .islet, in: shape)
             .background { WallpaperBackdrop().clipShape(shape) }

@@ -24,7 +24,7 @@ extension SettingsView {
                           low: "Frosted", high: "Clear", readout: transparencyLabel)
             }
         } footer: {
-            if settings.islandStyle.isGlass {
+            if settings.islandStyle.isGlass, IsletGlass.isLiquid {
                 Text("The middle of the transparency slider is Apple's standard Liquid Glass.")
             }
         }

@@ -54,7 +54,7 @@ cat > "$OUT/appcast.xml" <<XML
       <pubDate>$(LC_ALL=C date -u "+%a, %d %b %Y %H:%M:%S +0000")</pubDate>
       <sparkle:version>$BUILD</sparkle:version>
       <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
-      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
       <description><![CDATA[<p>$ESCAPED</p>]]></description>
       <enclosure url="$DOWNLOAD" type="application/octet-stream" $SIGNATURE/>
     </item>

@@ -64,8 +64,8 @@ enum IslandStyle: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .smokyGlass: "Liquid Glass"
-        case .clearGlass: "Clear Liquid Glass"
+        case .smokyGlass: IsletGlass.isLiquid ? "Liquid Glass" : "Frosted Glass"
+        case .clearGlass: IsletGlass.isLiquid ? "Clear Liquid Glass" : "Clear Glass"
         case .black: "Black (iPhone)"
         }
     }

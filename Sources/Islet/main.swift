@@ -16,7 +16,7 @@ if let flag = arguments.firstIndex(of: "--render-snapshots"), flag + 1 < argumen
     exit(0)
 }
 
-if let flag = arguments.firstIndex(of: "--glass-gallery"), flag + 1 < arguments.count {
+if #available(macOS 26.0, *), let flag = arguments.firstIndex(of: "--glass-gallery"), flag + 1 < arguments.count {
     NSApplication.shared.setActivationPolicy(.accessory)
     let art = arguments.firstIndex(of: "--art").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
     GlassGallery.run(output: arguments[flag + 1], artPath: art)

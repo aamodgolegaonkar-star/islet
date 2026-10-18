@@ -5,6 +5,7 @@ import SwiftUI
 /// `Islet --glass-gallery <out.png> --art <image>`: renders Liquid Glass treatments side by
 /// side over the real player background and captures them (real glass, not stand-ins), so
 /// styles can be compared by eye.
+@available(macOS 26.0, *)
 @MainActor
 enum GlassGallery {
     static func run(output: String, artPath: String?) {

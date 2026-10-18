@@ -145,7 +145,7 @@ enum Page: Int, CaseIterable {
 
     var subtitle: String {
         switch self {
-        case .welcome: "A Dynamic Island for your Mac, in real Liquid Glass."
+        case .welcome: IsletGlass.isLiquid ? "A Dynamic Island for your Mac, in real Liquid Glass." : "A Dynamic Island for your Mac."
         case .whatsNew: "Here's what this update adds. It only takes a moment."
         case .island: "Hover over the island at the top of your screen to open it. Try this one."
         case .feel: "Sliders click through detents like a dial on your trackpad. Drag this one."
@@ -235,7 +235,7 @@ struct OnboardingView: View {
     private var controls: some View {
         HStack {
             Button("Back") { go(-1) }
-                .buttonStyle(.glass)
+                .glassButtonStyle()
                 .opacity(index == 0 ? 0 : 1)
                 .disabled(index == 0)
             Spacer()
@@ -252,13 +252,13 @@ struct OnboardingView: View {
             if index == pages.count - 1 {
                 HStack(spacing: 10) {
                     Button("Open Settings") { openSettings() }
-                        .buttonStyle(.glass)
+                        .glassButtonStyle()
                     Button(whatsNew == nil ? "Start Listening" : "Got It") { finish() }
-                        .buttonStyle(.glassProminent)
+                        .glassButtonStyle(prominent: true)
                 }
             } else {
                 Button(index == 0 ? (whatsNew == nil ? "Get Started" : "Show Me") : "Continue") { go(+1) }
-                    .buttonStyle(.glassProminent)
+                    .glassButtonStyle(prominent: true)
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -354,7 +354,7 @@ private struct WelcomeHero: View {
         Capsule()
             .fill(.clear)
             .frame(width: open ? 300 : 150, height: open ? 64 : 40)
-            .glassEffect(.regular, in: Capsule())
+            .isletGlass(.regular, in: Capsule())
             .overlay {
                 HStack(spacing: 14) {
                     Image(systemName: "music.note")
@@ -393,7 +393,7 @@ private struct IslandDemo: View {
         RoundedRectangle(cornerRadius: hovering ? 30 : 18, style: .continuous)
             .fill(.clear)
             .frame(width: hovering ? 380 : 190, height: hovering ? 130 : 36)
-            .glassEffect(.regular, in: .rect(cornerRadius: hovering ? 30 : 18))
+            .isletGlass(.regular, in: .rect(cornerRadius: hovering ? 30 : 18))
             .overlay(alignment: hovering ? .topLeading : .leading) { content.padding(hovering ? 22 : 7) }
             .onHover(perform: hover)
     }

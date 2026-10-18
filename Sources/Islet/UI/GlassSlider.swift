@@ -41,8 +41,89 @@ private struct ProbeFrame: ViewModifier {
     }
 }
 
+/// Islet's description of a glass surface. On macOS 26 it becomes Apple's Liquid Glass;
+/// macOS 15 has no Liquid Glass, so the same surface is drawn as a frosted blur of what's
+/// behind the window, with the same tint.
+struct IsletGlass: Sendable {
+    enum Kind: Sendable { case regular, clear, identity }
+    var kind: Kind
+    var tint: Color?
+    var isInteractive = false
+
+    static let regular = IsletGlass(kind: .regular)
+    static let clear = IsletGlass(kind: .clear)
+    static let identity = IsletGlass(kind: .identity)
+
+    /// True where the system has Liquid Glass (macOS 26 and later).
+    static var isLiquid: Bool {
+        if #available(macOS 26.0, *), !forceFrosted { true } else { false }
+    }
+
+    /// Testing: `defaults write local.islet.Islet debugFrostedGlass -bool true` shows the
+    /// macOS 15 look on a newer Mac (read once at launch).
+    static let forceFrosted = UserDefaults.standard.bool(forKey: "debugFrostedGlass")
+
+    func tint(_ color: Color?) -> IsletGlass {
+        var copy = self
+        copy.tint = color
+        return copy
+    }
+
+    func interactive(_ on: Bool = true) -> IsletGlass {
+        var copy = self
+        copy.isInteractive = on
+        return copy
+    }
+
+    @available(macOS 26.0, *)
+    var liquid: Glass {
+        var glass: Glass = switch kind {
+        case .regular: .regular
+        case .clear: .clear
+        case .identity: .identity
+        }
+        if let tint { glass = glass.tint(tint) }
+        return glass.interactive(isInteractive)
+    }
+}
+
+/// The macOS 15 stand-in for Liquid Glass: a live blur of whatever is behind the window.
+struct BehindWindowBlur: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .hudWindow
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.material = material
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.material = material
+    }
+}
+
+private struct FrostedGlass<S: Shape>: View {
+    let glass: IsletGlass
+    let shape: S
+
+    var body: some View {
+        if glass.kind != .identity {
+            ZStack {
+                BehindWindowBlur(material: glass.kind == .clear ? .popover : .hudWindow)
+                    .opacity(glass.kind == .clear ? 0.75 : 1)
+                if let tint = glass.tint { shape.fill(tint) }
+                shape.stroke(.white.opacity(0.18), lineWidth: 0.6)
+            }
+            .clipShape(shape)
+            .allowsHitTesting(false)
+        }
+    }
+}
+
 private struct SnapshotSafeGlass<S: Shape>: ViewModifier {
-    let glass: Glass
+    let glass: IsletGlass
     let visible: Bool
     let shape: S
     @Environment(\.isSnapshotRendering) private var snapshot
@@ -50,8 +131,10 @@ private struct SnapshotSafeGlass<S: Shape>: ViewModifier {
     func body(content: Content) -> some View {
         if snapshot {
             content.background(shape.fill(.white.opacity(visible ? 0.16 : 0)))
+        } else if #available(macOS 26.0, *), !IsletGlass.forceFrosted {
+            content.glassEffect(glass.liquid, in: shape)
         } else {
-            content.glassEffect(glass, in: shape)
+            content.background(FrostedGlass(glass: visible ? glass : .identity, shape: shape))
         }
     }
 }
@@ -62,24 +145,46 @@ private struct GlassIdentity: ViewModifier {
     @Environment(\.isSnapshotRendering) private var snapshot
 
     func body(content: Content) -> some View {
-        if snapshot { content } else { content.glassEffectID(id, in: namespace) }
+        if snapshot {
+            content
+        } else if #available(macOS 26.0, *), !IsletGlass.forceFrosted {
+            content.glassEffectID(id, in: namespace)
+        } else {
+            content
+        }
     }
 }
 
 extension View {
-    /// Liquid Glass in the app; a flat translucent stand-in when rendering snapshots.
-    func snapshotSafeGlass(_ glass: Glass, visible: Bool = true, in shape: some Shape) -> some View {
+    /// Liquid Glass in the app (frosted blur before macOS 26); a flat translucent stand-in
+    /// when rendering snapshots.
+    func snapshotSafeGlass(_ glass: IsletGlass, visible: Bool = true, in shape: some Shape) -> some View {
         modifier(SnapshotSafeGlass(glass: glass, visible: visible, shape: shape))
+    }
+
+    /// Plain glass behind a view: Liquid Glass on macOS 26, frosted blur before it.
+    func isletGlass(_ glass: IsletGlass = .regular, in shape: some Shape) -> some View {
+        snapshotSafeGlass(glass, in: shape)
     }
 
     /// Gives glass a stable identity so it morphs between layouts inside a container.
     func glassID(_ id: String, in namespace: Namespace.ID) -> some View {
         modifier(GlassIdentity(id: id, namespace: namespace))
     }
+
+    /// The system glass button style on macOS 26; bordered buttons before it.
+    @ViewBuilder
+    func glassButtonStyle(prominent: Bool = false) -> some View {
+        if #available(macOS 26.0, *), !IsletGlass.forceFrosted {
+            if prominent { buttonStyle(.glassProminent) } else { buttonStyle(.glass) }
+        } else {
+            if prominent { buttonStyle(.borderedProminent) } else { buttonStyle(.bordered) }
+        }
+    }
 }
 
 /// `GlassEffectContainer` (shared sampling, liquid merging and morphing of nearby glass);
-/// a plain group when rendering snapshots.
+/// a plain group when rendering snapshots or before macOS 26.
 struct GlassContainer<Content: View>: View {
     var spacing: CGFloat = 16
     @ViewBuilder var content: Content
@@ -88,8 +193,10 @@ struct GlassContainer<Content: View>: View {
     var body: some View {
         if snapshot {
             content
-        } else {
+        } else if #available(macOS 26.0, *), !IsletGlass.forceFrosted {
             GlassEffectContainer(spacing: spacing) { content }
+        } else {
+            content
         }
     }
 }
@@ -408,25 +515,25 @@ final class TrackpadMotor: @unchecked Sendable {
 
 // MARK: - Buttons
 
-extension Glass {
+extension IsletGlass {
     /// Islet's glass: Apple's stock Liquid Glass at the default transparency (the material
     /// the system slider and Control Center use), clearer or smokier as the Settings slider
     /// moves away from the middle.
-    @MainActor static var islet: Glass { islet(clear: false) }
+    @MainActor static var islet: IsletGlass { islet(clear: false) }
 
     /// The Clear Liquid Glass island style starts from clear glass instead.
-    @MainActor static func islet(clear: Bool) -> Glass {
+    @MainActor static func islet(clear: Bool) -> IsletGlass {
         let transparency = LiveTuning.shared.glassTransparency
         if clear {
-            return Glass.clear.tint(.black.opacity(max(0, 0.5 - transparency) * 0.7)).interactive()
+            return IsletGlass.clear.tint(.black.opacity(max(0, 0.5 - transparency) * 0.7)).interactive()
         }
         if transparency > 0.52 {
-            return Glass.clear.tint(.black.opacity((1 - transparency) * 0.5)).interactive()
+            return IsletGlass.clear.tint(.black.opacity((1 - transparency) * 0.5)).interactive()
         }
         if transparency < 0.48 {
-            return Glass.regular.tint(.black.opacity((0.5 - transparency) * 0.9)).interactive()
+            return IsletGlass.regular.tint(.black.opacity((0.5 - transparency) * 0.9)).interactive()
         }
-        return Glass.regular.interactive()
+        return IsletGlass.regular.interactive()
     }
 }
 

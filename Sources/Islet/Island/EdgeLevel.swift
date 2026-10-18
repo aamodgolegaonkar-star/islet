@@ -84,7 +84,7 @@ private struct EdgeLevelView: View {
         }
         .padding(.vertical, 18)
         .frame(width: 48, height: 220)
-        .glassEffect(.regular, in: shape)
+        .isletGlass(.regular, in: shape)
         .environment(\.colorScheme, .dark)
         .scaleEffect(model.visible ? 1 : 0.8)
         .opacity(model.visible ? 1 : 0)

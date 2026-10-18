@@ -97,7 +97,7 @@ private struct PreviewSurface: ViewModifier {
 
     func body(content: Content) -> some View {
         if style.isGlass {
-            content.glassEffect(.islet(clear: style == .clearGlass), in: shape)
+            content.isletGlass(.islet(clear: style == .clearGlass), in: shape)
         } else {
             content.background(shape.fill(.black))
         }

@@ -237,9 +237,10 @@ private struct RoutedClick: ViewModifier {
 
     func body(content: Content) -> some View {
         if let router {
+            let spaceName: String? = spaced ? RoutedClickSpace.name : nil
             content
                 .onGeometryChange(for: CGRect.self) {
-                    $0.frame(in: spaced ? .named(RoutedClickSpace.name) : .global)
+                    if let spaceName { $0.frame(in: .named(spaceName)) } else { $0.frame(in: .global) }
                 } action: { newFrame in
                     frame = newFrame
                     update(router)

@@ -512,7 +512,7 @@ private struct IslandSurface<S: Shape>: ViewModifier {
     private var clearFrost: Double { (1 - LiveTuning.shared.glassTransparency) * 16 }
     private var clearDim: Double { (1 - LiveTuning.shared.glassTransparency) * 0.3 }
 
-    private var glassMaterial: Glass {
+    private var glassMaterial: IsletGlass {
         switch style {
         case .clearGlass: .islet(clear: true)
         default: .islet

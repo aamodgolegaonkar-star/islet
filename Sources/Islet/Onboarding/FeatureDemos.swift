@@ -39,7 +39,7 @@ private struct FlowChips: View {
                             .font(.system(size: 13, weight: .semibold))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .glassEffect(.regular, in: Capsule())
+                            .isletGlass(.regular, in: Capsule())
                             .scaleEffect(index < shown ? 1 : 0.5)
                             .opacity(index < shown ? 1 : 0)
                     }
@@ -153,7 +153,7 @@ struct LevelsDemo: View {
             }
             .padding(.vertical, 12)
             .frame(width: 34)
-            .glassEffect(.regular, in: Capsule())
+            .isletGlass(.regular, in: Capsule())
             .offset(x: 190)
             .opacity(edge ? 1 : 0)
             .scaleEffect(edge ? 1 : 0.8)
@@ -194,7 +194,7 @@ struct OutputDemo: View {
         }
         .padding(12)
         .frame(width: 280)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .isletGlass(.regular, in: .rect(cornerRadius: 16))
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1.4))
@@ -397,7 +397,7 @@ struct LockWidgetsDemo: View {
         }
         .padding(8)
         .frame(width: 62, height: 62)
-        .glassEffect(.regular, in: Circle())
+        .isletGlass(.regular, in: Circle())
     }
 }
 
