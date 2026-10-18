@@ -50,6 +50,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         island.show()
         PowerMonitor.shared.onPluggedIn = { [weak island] battery in island?.showCharging(battery) }
         lockScreen.onUnlock = { [weak island] in island?.showUnlocked() }
+        // Off the launch path: get the lock-screen windows ready for the first lock.
+        Task { @MainActor [weak lockScreen] in
+            try? await Task.sleep(for: .seconds(3))
+            lockScreen?.prepare()
+        }
 
         // Live activities: volume, brightness, headphones.
         store.onVolumeKeys = { [weak island, weak settings] volume, muted in

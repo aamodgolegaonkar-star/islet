@@ -98,7 +98,7 @@ final class OnboardingController {
 /// the full tutorial shows every page, and after updating, "What's New" shows the new ones.
 enum Page: Int, CaseIterable {
     case welcome, whatsNew
-    case island, feel, player, activities, levels, controls, sound, shelf, webPlayers, lock, lockWidgets, agents
+    case island, feel, player, activities, levels, controls, sound, shelf, webPlayers, lock, lockWidgets, lockCustomize, agents
     case done
 
     /// The full tutorial, in order.
@@ -120,6 +120,7 @@ enum Page: Int, CaseIterable {
         case .island, .feel, .player, .lock, .agents, .activities: "1.0"
         case .controls, .sound, .levels, .webPlayers, .lockWidgets: "1.6.0"
         case .shelf: "1.6.0"
+        case .lockCustomize: "1.7.0"
         }
     }
 
@@ -138,6 +139,7 @@ enum Page: Int, CaseIterable {
         case .webPlayers: "Web players, by name"
         case .lock: "Made for the lock screen"
         case .lockWidgets: "Lock-screen widgets"
+        case .lockCustomize: "Make the lock screen yours"
         case .agents: "Your coding agents, in the island"
         case .done: "You're all set"
         }
@@ -157,7 +159,8 @@ enum Page: Int, CaseIterable {
         case .shelf: "Drag files onto the island to keep them handy. The Clipboard tab keeps what you copied; click a card to copy it again."
         case .webPlayers: "Playing in a browser? Islet names the service: YouTube Music, Deezer, Qobuz, Tidal, SoundCloud and more."
         case .lock: "Your music stays on the lock screen. A wrong finger shakes the padlock; the right one opens it."
-        case .lockWidgets: "Weather, battery, volume and your headphones' battery under the clock, with motion artwork behind them."
+        case .lockWidgets: "Small widgets sit under the clock: battery, what's playing, volume, your headphones and more, with motion artwork behind them."
+        case .lockCustomize: "Drag widgets in, out and around in Settings → Lock Screen. New: Date, World Clock and CPU. Click a tile here to take it away."
         case .agents: "Claude Code and Codex tell you in the island when they need you or finish. Click to jump to the terminal."
         case .done: "Everything can be tuned in Settings: island size, glass, sound, haptics and more."
         }
@@ -327,6 +330,7 @@ private struct PageView: View {
         case .webPlayers: WebPlayerDemo()
         case .lock: LockDemo()
         case .lockWidgets: LockWidgetsDemo()
+        case .lockCustomize: LockCustomizeDemo()
         case .agents: AgentDemo()
         case .done: DoneHero()
         }

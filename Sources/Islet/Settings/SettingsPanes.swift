@@ -241,14 +241,20 @@ extension SettingsView {
         Section {
             Toggle("Show the island and player on the lock screen", isOn: $settings.lockWidgetEnabled.animation(reveal))
             if settings.lockWidgetEnabled {
-                Toggle("Weather", isOn: $settings.lockWeather)
-                    .onChange(of: settings.lockWeather) { _, on in if on { WeatherService.shared.requestAccess() } }
-                Toggle("Headphone battery", isOn: $settings.lockHeadphones)
                 Toggle("Motion artwork behind the widgets", isOn: $settings.lockMotionBackground)
             }
         } footer: {
             if settings.lockWidgetEnabled {
-                Text("Weather uses your location and Open-Meteo. Motion artwork needs the Apple Music token in Music & Lyrics.")
+                Text("Motion artwork needs the Apple Music token in Music & Lyrics.")
+            }
+        }
+        if settings.lockWidgetEnabled {
+            Section {
+                LockWidgetsEditor(settings: settings)
+            } header: {
+                Text("Widgets")
+            } footer: {
+                Text("Widgets with nothing to show, like headphones that aren't connected, step aside until they do. Weather uses your location and Open-Meteo.")
             }
         }
         Section("Sounds") {

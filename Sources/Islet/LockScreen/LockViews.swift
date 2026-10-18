@@ -17,6 +17,7 @@ extension View {
 struct LockWidgetsRow: View {
     let store: PlayerStore
     @Bindable var model: LockModel
+    let settings: AppSettings
 
     var body: some View {
         if model.isPresented { widgets }
@@ -24,30 +25,9 @@ struct LockWidgetsRow: View {
 
     private var widgets: some View {
         GlassContainer(spacing: 10) {
-            HStack(spacing: 12) {
-                if let weather = model.weather {
-                    WeatherTile(report: weather)
-                        .frame(width: 66, height: 66)
-                        .lockGlass(Circle())
-                        .transition(.scale.combined(with: .opacity))
-                }
-                if let battery = model.battery {
-                    BatteryRing(battery: battery)
-                        .frame(width: 66, height: 66)
-                        .lockGlass(Circle())
-                }
-                if store.hasTrack {
-                    NowPlayingMini(store: store, model: model)
-                        .frame(width: 222, height: 66)
-                        .lockGlass(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                }
-                VolumeRing(level: store.volume)
-                    .frame(width: 66, height: 66)
-                    .lockGlass(Circle())
-                if let headphones = model.headphones {
-                    HeadphoneRing(status: headphones)
-                        .frame(width: 66, height: 66)
-                        .lockGlass(Circle())
+            HStack(spacing: LockWidget.spacing) {
+                ForEach(settings.lockWidgets) { widget in
+                    LockWidgetTile(widget: widget, store: store, model: model, settings: settings)
                 }
             }
         }
@@ -56,6 +36,7 @@ struct LockWidgetsRow: View {
         .environment(\.wallpaper, model.widgetsWallpaper)
         .environment(\.colorScheme, .dark)
         .environment(\.appearsActive, true)
+        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: settings.lockWidgets)
     }
 }
 

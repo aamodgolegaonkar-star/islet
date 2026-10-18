@@ -54,7 +54,7 @@ enum SnapshotRenderer {
         lockModel.isPresented = true
         lockModel.battery = BatteryState(level: 0.82, isCharging: false, isPluggedIn: false)
         let lockBackground = Color(red: 0.12, green: 0.14, blue: 0.22)
-        save(LockWidgetsRow(store: store, model: lockModel).background(lockBackground),
+        save(LockWidgetsRow(store: store, model: lockModel, settings: settings).background(lockBackground),
              size: LockLayout.widgetsSize, to: output.appending(path: "lock-widgets.png"))
         save(LockPlayerPlatter(store: store, model: lockModel).background(lockBackground),
              size: LockLayout.playerSize, to: output.appending(path: "lock-player.png"))

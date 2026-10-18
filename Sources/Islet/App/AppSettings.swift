@@ -88,6 +88,76 @@ enum LevelPosition: String, CaseIterable, Identifiable {
     }
 }
 
+/// A widget in the row under the lock-screen clock. The user picks which ones show and
+/// in what order (Settings → Lock Screen).
+enum LockWidget: String, CaseIterable, Identifiable {
+    case weather
+    case battery
+    case nowPlaying
+    case volume
+    case headphones
+    case date
+    case worldClock
+    case cpu
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .weather: "Weather"
+        case .battery: "Battery"
+        case .nowPlaying: "Now Playing"
+        case .volume: "Volume"
+        case .headphones: "Headphones"
+        case .date: "Date"
+        case .worldClock: "World Clock"
+        case .cpu: "CPU"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .weather: "cloud.sun.fill"
+        case .battery: "battery.75percent"
+        case .nowPlaying: "music.note"
+        case .volume: "speaker.wave.2.fill"
+        case .headphones: "airpods.pro"
+        case .date: "calendar"
+        case .worldClock: "globe"
+        case .cpu: "cpu"
+        }
+    }
+
+    /// Shown under the name in Settings, for widgets that aren't always there.
+    var note: String? {
+        switch self {
+        case .weather: "Uses your location"
+        case .nowPlaying: "While something plays"
+        case .headphones: "While connected"
+        case .battery: "Laptops only"
+        default: nil
+        }
+    }
+
+    /// Tile width; the rest are circles.
+    var width: CGFloat { self == .nowPlaying ? 222 : 66 }
+
+    static let spacing: CGFloat = 12
+    /// What fits across the widgets window (`LockLayout.widgetsSize`) with a margin.
+    static let rowWidth: CGFloat = 620
+
+    static func width(of widgets: [LockWidget]) -> CGFloat {
+        widgets.map(\.width).reduce(0, +) + spacing * CGFloat(max(widgets.count - 1, 0))
+    }
+
+    /// Whether `widget` still fits after `widgets`.
+    static func fits(_ widget: LockWidget, after widgets: [LockWidget]) -> Bool {
+        width(of: widgets + [widget]) <= rowWidth
+    }
+
+    static let standard: [LockWidget] = [.battery, .nowPlaying, .volume, .headphones]
+}
+
 /// User preferences plus the app's Application Support locations.
 @MainActor
 @Observable
@@ -129,6 +199,8 @@ final class AppSettings {
         static let eqPreamp = "equalizerPreamp"
         static let eqPreset = "equalizerPreset"
         static let lockWeather = "lockWeather"
+        static let lockWidgetList = "lockWidgets"
+        static let worldClockZone = "worldClockZone"
         static let lockHeadphones = "lockHeadphones"
         static let lockMotion = "lockMotionBackground"
     }
@@ -263,12 +335,15 @@ final class AppSettings {
     var equalizerPreset: EqualizerPreset? {
         didSet { defaults.set(equalizerPreset?.rawValue, forKey: Key.eqPreset) }
     }
-    /// Lock-screen widgets.
-    var lockWeather: Bool {
-        didSet { defaults.set(lockWeather, forKey: Key.lockWeather) }
+    /// The widgets under the lock-screen clock, in order.
+    var lockWidgets: [LockWidget] {
+        didSet { defaults.set(lockWidgets.map(\.rawValue), forKey: Key.lockWidgetList) }
     }
-    var lockHeadphones: Bool {
-        didSet { defaults.set(lockHeadphones, forKey: Key.lockHeadphones) }
+    var lockWeather: Bool { lockWidgets.contains(.weather) }
+    var lockHeadphones: Bool { lockWidgets.contains(.headphones) }
+    /// The World Clock widget's time zone (an IANA identifier).
+    var worldClockZone: String {
+        didSet { defaults.set(worldClockZone, forKey: Key.worldClockZone) }
     }
     /// Motion artwork fills the lock screen behind the widgets while music plays.
     var lockMotionBackground: Bool {
@@ -367,8 +442,21 @@ final class AppSettings {
             ? bands.map { Self.clamped($0, Equalizer.gainRange) } : Equalizer.flat
         equalizerPreamp = Self.clamped(defaults.double(forKey: Key.eqPreamp), Equalizer.gainRange)
         equalizerPreset = defaults.string(forKey: Key.eqPreset).flatMap(EqualizerPreset.init(rawValue:))
-        lockWeather = defaults.bool(forKey: Key.lockWeather)
-        lockHeadphones = defaults.bool(forKey: Key.lockHeadphones)
+        if let saved = defaults.stringArray(forKey: Key.lockWidgetList) {
+            var widgets: [LockWidget] = []
+            for widget in saved.compactMap(LockWidget.init(rawValue:))
+            where !widgets.contains(widget) && LockWidget.fits(widget, after: widgets) {
+                widgets.append(widget)
+            }
+            lockWidgets = widgets
+        } else {
+            // Before 1.7 the row was fixed, with switches for weather and headphones.
+            lockWidgets = (defaults.bool(forKey: Key.lockWeather) ? [.weather] : [])
+                + [.battery, .nowPlaying, .volume]
+                + (defaults.bool(forKey: Key.lockHeadphones) ? [.headphones] : [])
+        }
+        worldClockZone = defaults.string(forKey: Key.worldClockZone)
+            .flatMap { TimeZone(identifier: $0)?.identifier } ?? "America/New_York"
         lockMotionBackground = defaults.bool(forKey: Key.lockMotion)
         tutorialVersion = defaults.string(forKey: "tutorialVersion")
         ClipboardHistory.shared.isEnabled = clipboardHistory

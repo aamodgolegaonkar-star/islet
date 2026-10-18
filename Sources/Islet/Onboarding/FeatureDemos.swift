@@ -59,6 +59,7 @@ extension Page {
         case .shelf: ("Clipboard", "doc.on.clipboard.fill")
         case .webPlayers: ("Web players", "globe")
         case .lockWidgets: ("Lock widgets", "cloud.sun.fill")
+        case .lockCustomize: ("Your widgets", "square.grid.3x1.below.line.grid.1x2")
         case .island: ("Island", "capsule.fill")
         case .feel: ("Haptics", "hand.tap.fill")
         case .player: ("Player", "music.note")
@@ -396,6 +397,63 @@ struct LockWidgetsDemo: View {
             content()
         }
         .padding(8)
+        .frame(width: 62, height: 62)
+        .glassEffect(.regular, in: Circle())
+    }
+}
+
+/// The lock-screen row rearranging itself: a Date tile joins, then two tiles swap.
+/// Clicking a tile removes it; it comes back on the next round.
+struct LockCustomizeDemo: View {
+    @State private var tiles: [LockWidget] = [.battery, .volume, .headphones]
+    @State private var round = 0
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("9:41").font(.system(size: 64, weight: .semibold, design: .rounded))
+            HStack(spacing: 12) {
+                ForEach(tiles) { widget in
+                    tile(widget)
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { tiles.removeAll { $0 == widget } }
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(height: 62)
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.4))
+                step()
+            }
+        }
+    }
+
+    private func step() {
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
+            switch round % 4 {
+            case 0: tiles.insert(.date, at: 0)
+            case 1: if tiles.count > 2 { tiles.swapAt(1, 2) }
+            case 2: tiles.append(.worldClock)
+            default: tiles = [.battery, .volume, .headphones]
+            }
+        }
+        round += 1
+    }
+
+    private func tile(_ widget: LockWidget) -> some View {
+        Group {
+            switch widget {
+            case .date: DateTile()
+            case .worldClock: WorldClockTile(zone: TimeZone(identifier: "Asia/Tokyo") ?? .current)
+            case .battery: BatteryRing(battery: BatteryState(level: 0.8, isCharging: false, isPluggedIn: false))
+            case .volume: VolumeRing(level: 0.6)
+            default:
+                HeadphoneRing(status: HeadphoneStatus(name: "AirPods", symbol: "airpods.pro",
+                                                      battery: HeadphoneBattery(left: 90, right: 90)))
+            }
+        }
         .frame(width: 62, height: 62)
         .glassEffect(.regular, in: Circle())
     }

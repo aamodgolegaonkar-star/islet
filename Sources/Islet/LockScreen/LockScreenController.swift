@@ -14,6 +14,7 @@ final class LockModel {
     var battery: BatteryState?
     var weather: WeatherService.Report?
     var headphones: HeadphoneStatus?
+    var cpuLoad: Double?
     var widgetsWallpaper: WallpaperContext?
     var playerWallpaper: WallpaperContext?
     /// Artwork frames in their own windows (top-left coordinates), reported by the views.
@@ -43,12 +44,14 @@ final class LockScreenController {
     private var onLockScreen = false
     private var presentTask: Task<Void, Never>?
     private var batteryTimer: Timer?
+    private var cpuTimer: Timer?
+    private let cpu = CPULoadSampler()
     private var layout: LockLayout?
     /// Bumped on every present/dismiss, so a late fade-out can't hide a newer presentation.
     private var generation = 0
 
     private lazy var widgetsPanel = makePanel("lock.widgets", LockLayout.widgetsSize,
-                                              LockWidgetsRow(store: store, model: model))
+                                              LockWidgetsRow(store: store, model: model, settings: settings))
     private lazy var playerPanel = makePanel("lock.player", LockLayout.playerSize,
                                              LockPlayerPlatter(store: store, model: model))
     /// The island on the lock screen: a padlock that shakes after a wrong attempt.
@@ -120,12 +123,48 @@ final class LockScreenController {
             return
         }
         failureWatcher.start()
+        // Show at once, laid out around the clock (its size is known from LoginUIKit), then
+        // settle around loginwindow's own panels once they're up.
+        present(onLockScreen: true)
         presentTask?.cancel()
         presentTask = Task { @MainActor [weak self] in
-            // Let loginwindow put its clock and login panel up first, then lay out around them.
-            try? await Task.sleep(for: .milliseconds(650))
-            guard let self, !Task.isCancelled, self.isLocked else { return }
-            self.present(onLockScreen: true)
+            for delay in [350, 900] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                guard let self, !Task.isCancelled, self.isLocked else { return }
+                self.relayout()
+            }
+        }
+    }
+
+    /// Moves the pieces if loginwindow's clock or login panel turned out elsewhere.
+    private func relayout() {
+        guard model.isPresented, !model.isAlbumOpen, let screen = NSScreen.screens.first else { return }
+        let next = makeLayout(screen: screen, onLockScreen: onLockScreen)
+        guard next.widgets != layout?.widgets || next.player != layout?.player else { return }
+        layout = next
+        model.clockInset = next.clockInset
+        for (panel, frame) in [(widgetsPanel, next.widgets), (playerPanel, next.player)] where panel.isVisible {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.25
+                context.allowsImplicitAnimation = true
+                panel.animator().setFrame(frame, display: true)
+            }
+        }
+        model.widgetsWallpaper = Wallpaper.context(for: screen, windowFrame: next.widgets)
+        model.playerWallpaper = Wallpaper.context(for: screen, windowFrame: next.player)
+    }
+
+    private func makeLayout(screen: NSScreen, onLockScreen: Bool) -> LockLayout {
+        LockLayout(screen: screen, loginWindows: onLockScreen ? LockLayout.loginWindowFrames() : [],
+                   clockBottom: SystemClock.isAvailable ? SystemClock.clockBottom(screenHeight: screen.frame.height) : nil)
+    }
+
+    /// Builds the windows (and measures the clock) ahead of the first lock, so it shows at once.
+    func prepare() {
+        guard settings.lockWidgetEnabled, space != nil else { return }
+        _ = (widgetsPanel, playerPanel, islandPanel, motionPanel)
+        if let screen = NSScreen.screens.first, SystemClock.isAvailable {
+            _ = SystemClock.clockBottom(screenHeight: screen.frame.height)
         }
     }
 
@@ -169,8 +208,7 @@ final class LockScreenController {
     private func present(onLockScreen: Bool) {
         guard let screen = NSScreen.screens.first else { return }
         self.onLockScreen = onLockScreen
-        let layout = LockLayout(screen: screen, loginWindows: onLockScreen ? LockLayout.loginWindowFrames() : [],
-                                clockBottom: SystemClock.isAvailable ? SystemClock.clockBottom(screenHeight: screen.frame.height) : nil)
+        let layout = makeLayout(screen: screen, onLockScreen: onLockScreen)
         self.layout = layout
         generation += 1
         model.battery = Battery.current()
@@ -220,6 +258,27 @@ final class LockScreenController {
                 if self.settings.lockHeadphones { self.model.headphones = HeadphoneStatus.current() }
             }
         }
+        startCPU()
+    }
+
+    /// Samples CPU load every few seconds, only while the CPU widget is on screen.
+    private func startCPU() {
+        cpuTimer?.invalidate()
+        cpuTimer = nil
+        guard settings.lockWidgets.contains(.cpu) else { model.cpuLoad = nil; return }
+        _ = cpu.sample()
+        // A first reading soon after, rather than an empty ring for a whole interval.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let self, self.cpuTimer != nil, let load = self.cpu.sample() else { return }
+            self.model.cpuLoad = load
+        }
+        cpuTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let load = self.cpu.sample() else { return }
+                self.model.cpuLoad = load
+            }
+        }
     }
 
     private func show(_ panel: NSPanel, at frame: CGRect) {
@@ -227,12 +286,14 @@ final class LockScreenController {
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         if onLockScreen { space?.attach(panel) }
-        fade(panel, to: 1, duration: 0.45)
+        fade(panel, to: 1, duration: 0.2)
     }
 
     private func dismiss() {
         batteryTimer?.invalidate()
         batteryTimer = nil
+        cpuTimer?.invalidate()
+        cpuTimer = nil
         generation += 1
         let dismissal = generation
         model.isAlbumOpen = false
