@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Islet</string>
+	<string>Islet Legacy</string>
 	<key>CFBundleExecutable</key>
 	<string>Islet</string>
 	<key>CFBundleIconFile</key>
@@ -52,7 +52,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://github.com/aamodgolegaonkar-star/islet-releases/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/aamodgolegaonkar-star/islet-legacy-releases/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>xZwYHTUmYy5rlTuQphKdeOzwxOStBoXO7+YmtcL3jPo=</string>
 	<key>SUScheduledCheckInterval</key>

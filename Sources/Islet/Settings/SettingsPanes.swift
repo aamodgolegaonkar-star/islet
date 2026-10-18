@@ -332,7 +332,7 @@ extension SettingsView {
                     .resizable()
                     .frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Islet").font(.title3.weight(.semibold))
+                    Text("Islet Legacy").font(.title3.weight(.semibold))
                     Text("Version \(Self.version)").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()

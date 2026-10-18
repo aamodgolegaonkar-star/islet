@@ -14,7 +14,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${1:-release}"
 ADAPTER="$ROOT/Vendor/mediaremote-adapter"
 ADAPTER_COMMIT="797729d9b16316dc313844476c153d7a107ca0df"
-APP="$ROOT/build/Islet.app"
+APP="$ROOT/build/Islet Legacy.app"
 
 if [ ! -d "$ADAPTER/.git" ]; then
     git clone --quiet https://github.com/ungive/mediaremote-adapter.git "$ADAPTER"
