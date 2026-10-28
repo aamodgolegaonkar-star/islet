@@ -1,3 +1,4 @@
+import IsletCore
 import SwiftUI
 
 // Live demos for the tutorial's feature pages. Each is a small, self-running sketch of the
@@ -63,10 +64,109 @@ extension Page {
         case .island: ("Island", "capsule.fill")
         case .feel: ("Haptics", "hand.tap.fill")
         case .player: ("Player", "music.note")
+        case .wordLyrics: ("Word-by-word lyrics", "quote.bubble.fill")
+        case .screenLyrics: ("Lyrics on screen", "text.bubble.fill")
+        case .edgeGlow: ("Edge glow", "light.max")
         case .activities: ("Live activities", "bolt.fill")
         case .lock: ("Lock screen", "lock.fill")
         case .agents: ("Coding agents", "terminal.fill")
         case .welcome, .whatsNew, .done: (title, "star.fill")
+        }
+    }
+}
+
+/// One line sung on a loop, through the three looks: word by word, Fisheye, and Fisheye
+/// with icons. Drawn by the player's own `SungWords`.
+struct WordLyricsDemo: View {
+    private static let line = "I see fire in the night sky"
+    private static let words: [LyricWord] = {
+        let lines = LRCParser.parse("[00:00.50]\(line)\n[00:04.00]", duration: 4)
+        return (WordSymbols.system?.annotate(lines) ?? lines).first { !$0.isInterlude }?.words ?? []
+    }()
+    private static let loop: TimeInterval = 4
+    @State private var start = Date()
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let elapsed = context.date.timeIntervalSince(start)
+            let round = Int(elapsed / Self.loop) % 3
+            let focus = WordTiming.focus(in: Self.words, at: elapsed.truncatingRemainder(dividingBy: Self.loop))
+            VStack(alignment: .leading, spacing: 22) {
+                SungWords(words: Self.words, focus: focus, fontSize: 34, fisheye: round > 0, icons: round == 2)
+                    .frame(width: 560, alignment: .leading)
+                Text(["Word by Word", "Fisheye", "Fisheye with icons"][round])
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .contentTransition(.opacity)
+            }
+            .padding(.top, 30)
+        }
+    }
+}
+
+/// The on-screen lyrics' stack of words rolling through a line, drawn by the real `WordStack`.
+struct ScreenLyricsDemo: View {
+    private static let words: [LyricWord] = {
+        let line = "Now when you see me I'm stunning"
+        let lines = LRCParser.parse("[00:00.20]\(line)\n[00:03.80]", duration: 4)
+        return (WordSymbols.system?.annotate(lines) ?? lines).first { !$0.isInterlude }?.words ?? []
+    }()
+    private static let stream = WordStream(lines: [LyricLine(id: 0, start: 0, end: 4, text: "", words: words)])
+    private static let ink = ScreenInk(text: Color(rgb: AppSettings.defaultScreenLyricsColors.text),
+                                       highlight: Color(rgb: AppSettings.defaultScreenLyricsColors.highlight),
+                                       highlightText: .white)
+    @State private var start = Date()
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+            let time = context.date.timeIntervalSince(start).truncatingRemainder(dividingBy: 4.6)
+            let current = Self.stream.isResting(at: time) ? nil : Self.stream.index(at: time)
+            let progress = current.map { index -> Double in
+                let word = Self.words[index]
+                return min(max((time - word.start) / max(word.end - word.start, 0.05), 0), 1)
+            } ?? 0
+            WordStack(words: Self.words, current: current, progress: progress, size: 64,
+                      font: .sfPro, ink: Self.ink, icons: true, lensed: LyricLens.isAvailable)
+                .frame(width: 560, height: 294)
+                .lyricLens(size: CGSize(width: 560, height: 294))
+        }
+    }
+}
+
+/// A small screen whose edges glow in one album's colors, then the next.
+struct EdgeGlowDemo: View {
+    private static let albums: [Palette] = [
+        Palette(colors: [RGB(0.5, 0.1, 0.4), RGB(0.1, 0.2, 0.6)], accent: RGB(0.98, 0.36, 0.6)),
+        Palette(colors: [RGB(0.6, 0.3, 0.05), RGB(0.5, 0.05, 0.05)], accent: RGB(1, 0.62, 0.2)),
+        Palette(colors: [RGB(0.05, 0.4, 0.4), RGB(0.1, 0.15, 0.5)], accent: RGB(0.3, 0.95, 0.8)),
+    ]
+    @State private var index = 0
+    @State private var bright = false
+
+    var body: some View {
+        let colors = Self.albums[index].glowColors.map { Color(rgb: $0) }
+        let ring = AngularGradient(colors: colors + colors.prefix(1), center: .center)
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        ZStack {
+            shape.fill(.black.opacity(0.55))
+            ZStack {
+                shape.strokeBorder(ring, lineWidth: 18).blur(radius: 14).opacity(0.85)
+                shape.strokeBorder(ring, lineWidth: 2.5).blur(radius: 2)
+            }
+            .clipShape(shape)
+            .opacity(bright ? 1 : 0.65)
+            Image(systemName: "music.note")
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
+        }
+        .frame(width: 360, height: 210)
+        .animation(.easeInOut(duration: 1.2), value: index)
+        .task {
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { bright = true }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2.4))
+                index = (index + 1) % Self.albums.count
+            }
         }
     }
 }

@@ -189,6 +189,8 @@ struct LyricRow: View {
             if line.isInterlude {
                 InterludeDots(line: line, isActive: isActive, store: store, dotSize: fontSize * 0.36)
                     .frame(height: isActive ? fontSize * 1.1 : fontSize * 0.2, alignment: .leading)
+            } else if LiveTuning.shared.lyricStyle != .classic, !line.words.isEmpty {
+                WordLyricLine(line: line, isActive: isActive, fontSize: fontSize, store: store)
             } else {
                 Text(line.text)
                     .font(.system(size: fontSize, weight: .bold))
@@ -287,10 +289,12 @@ private struct LyricHoverSurface: ViewModifier {
 }
 
 /// The line being sung, as one line under the artist in the open island. Wakes only when
-/// the line changes, like `SyncedLyrics`; shows nothing without synced lyrics.
+/// the line changes, like `SyncedLyrics`; shows nothing without synced lyrics. In the
+/// word-by-word styles the line runs a timeline while it's shown and music plays, sliding
+/// along to keep the word being sung in view.
 struct LiveLyricLine: View {
     let store: PlayerStore
-    @State private var text: String
+    @State private var line: LyricLine?
 
     private struct Key: Equatable {
         var timing: PlaybackTiming?
@@ -301,34 +305,59 @@ struct LiveLyricLine: View {
     init(store: PlayerStore) {
         self.store = store
         // Start on the current line, so the island doesn't open blank.
-        _text = State(initialValue: Self.line(in: store, at: store.lyricsPosition(at: Date())))
+        _line = State(initialValue: Self.line(in: store, at: store.lyricsPosition(at: Date())))
     }
 
-    private static func line(in store: PlayerStore, at position: TimeInterval) -> String {
-        guard case .synced(let lines) = store.lyrics,
-              let line = LRCParser.activeIndex(in: lines, at: position).map({ lines[$0] }) else { return "" }
+    private static func line(in store: PlayerStore, at position: TimeInterval) -> LyricLine? {
+        guard case .synced(let lines) = store.lyrics else { return nil }
+        return LRCParser.activeIndex(in: lines, at: position).map { lines[$0] }
+    }
+
+    private var text: String {
+        guard let line else { return "" }
         return line.isInterlude ? "♪" : line.text
     }
 
+    @ViewBuilder
+    private var content: some View {
+        if let line, !line.words.isEmpty, LiveTuning.shared.lyricStyle != .classic {
+            TimelineView(.animation(minimumInterval: LiveTuning.shared.batterySaving ? 1.0 / 20 : 1.0 / 60,
+                                    paused: !store.isPlaying)) { context in
+                SungWords(words: line.words,
+                          focus: WordTiming.focus(in: line.words, at: store.lyricsPosition(at: context.date) + 0.05),
+                          fontSize: 12,
+                          fisheye: LiveTuning.shared.lyricStyle == .fisheye,
+                          icons: LiveTuning.shared.lyricWordIcons,
+                          singleLine: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Text(text.isEmpty ? " " : text)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
     var body: some View {
-        Text(text.isEmpty ? " " : text)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.9))
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .id(text)
+        content
+            .id("\(line?.id ?? -1) \(text)")
             .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
                                     removal: .move(edge: .top).combined(with: .opacity)))
-            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: text)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: line)
+            // Room above for a swelling word, then clip the line change's slide.
+            .padding(.top, 4)
             .clipped()
+            .padding(.top, -4)
             .task(id: Key(timing: store.timing, lyrics: store.lyrics, offset: LiveTuning.shared.lyricsOffset)) {
-                guard case .synced(let lines) = store.lyrics else { text = ""; return }
+                guard case .synced(let lines) = store.lyrics else { line = nil; return }
                 let lead: TimeInterval = 0.15
                 while !Task.isCancelled {
                     let offset = LiveTuning.shared.lyricsOffset
                     let position = store.lyricsPosition(at: Date())
                     let next = Self.line(in: store, at: position)
-                    if next != text { text = next }
+                    if next != line { line = next }
                     guard let timing = store.timing,
                           let start = lines.first(where: { $0.start > position + lead })?.start,
                           let date = timing.date(reaching: start - lead - offset)

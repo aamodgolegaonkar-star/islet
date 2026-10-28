@@ -7,14 +7,31 @@ public struct LyricLine: Sendable, Equatable, Identifiable {
     public var end: TimeInterval
     public var text: String
     public var isInterlude: Bool
+    /// The line's words with their own timing; empty for interludes.
+    public var words: [LyricWord]
+    /// The words were timed by the lyrics source (Apple Music, Enhanced LRC), rather than
+    /// estimated by spreading the line's time across them.
+    public var hasExactWordTiming: Bool
 
-    public init(id: Int, start: TimeInterval, end: TimeInterval, text: String, isInterlude: Bool = false) {
+    public init(id: Int, start: TimeInterval, end: TimeInterval, text: String, isInterlude: Bool = false,
+                words: [LyricWord] = [], hasExactWordTiming: Bool = false) {
         self.id = id
         self.start = start
         self.end = end
         self.text = text
         self.isInterlude = isInterlude
+        self.words = words
+        self.hasExactWordTiming = hasExactWordTiming
     }
+}
+
+/// One line before rows are numbered and interludes are added: a time, the sung text and,
+/// when the source times words, its pieces. A nil `end` runs to the next line.
+struct TimedEntry {
+    var time: TimeInterval
+    var end: TimeInterval?
+    var text: String
+    var pieces: [TimedPiece] = []
 }
 
 /// Parser for LRC (and the line part of Enhanced LRC) as served by LRCLIB.
@@ -26,7 +43,9 @@ public enum LRCParser {
     private static var timeTag: Regex<(Substring, Substring, Substring, Substring?)> {
         /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/
     }
-    private static var wordTag: Regex<Substring> { /<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/ }
+    private static var wordTag: Regex<(Substring, Substring, Substring, Substring?)> {
+        /<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>/
+    }
     private static var offsetTag: Regex<(Substring, Substring)> { /(?i)\[offset:\s*([+-]?\d+)\s*\]/ }
 
     public static func parse(_ lrc: String, duration: TimeInterval? = nil) -> [LyricLine] {
@@ -36,7 +55,7 @@ public enum LRCParser {
             offset = ms / 1000
         }
 
-        var entries: [(time: TimeInterval, text: String)] = []
+        var entries: [TimedEntry] = []
         for rawLine in lrc.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
             var rest = Substring(rawLine)
             var times: [TimeInterval] = []
@@ -44,11 +63,15 @@ public enum LRCParser {
                 times.append(seconds(match.1, match.2, match.3) - offset)
                 rest = rest[match.range.upperBound...]
             }
-            guard !times.isEmpty else { continue }
+            guard let first = times.first else { continue }
             let text = rest.replacing(wordTag, with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            let pieces = text.isEmpty ? [] : wordPieces(rest, offset: offset)
             for time in times {
-                entries.append((max(0, time), text))
+                // Word tags hold the first occurrence's times; a repeated chorus shifts them.
+                let shift = time - first
+                let moved = pieces.map { TimedPiece(start: max(0, $0.start + shift), text: $0.text) }
+                entries.append(TimedEntry(time: max(0, time), text: text, pieces: moved))
             }
         }
         // Stable sort keeps duet lines with equal timestamps in file order.
@@ -56,6 +79,22 @@ public enum LRCParser {
             .sorted { $0.element.time == $1.element.time ? $0.offset < $1.offset : $0.element.time < $1.element.time }
             .map(\.element)
         return buildLines(ordered, duration: duration)
+    }
+
+    /// Enhanced LRC word tags: `<00:12.00>Look <00:12.40>at <00:12.70>the<00:13.10>`. Each tag
+    /// times the text after it; a trailing tag marks when the last word ends.
+    private static func wordPieces(_ body: Substring, offset: TimeInterval) -> [TimedPiece] {
+        let matches = body.matches(of: wordTag)
+        guard !matches.isEmpty else { return [] }
+        var pieces: [TimedPiece] = []
+        for (index, match) in matches.enumerated() {
+            let upper = index + 1 < matches.count ? matches[index + 1].range.lowerBound : body.endIndex
+            var text = String(body[match.range.upperBound..<upper])
+            // Text before the first tag belongs to the first word.
+            if index == 0 { text = String(body[..<match.range.lowerBound]) + text }
+            pieces.append(TimedPiece(start: seconds(match.1, match.2, match.3) - offset, text: text))
+        }
+        return pieces
     }
 
     /// Index of the row that should be highlighted at `time`, or nil before the first row.
@@ -83,23 +122,31 @@ public enum LRCParser {
         return value
     }
 
-    private static func buildLines(_ entries: [(time: TimeInterval, text: String)], duration: TimeInterval?) -> [LyricLine] {
-        var sung: [(start: TimeInterval, end: TimeInterval, text: String)] = []
+    /// Numbers the sung lines, gives each its words (timed by the source, or estimated) and
+    /// adds interlude rows for long gaps. Shared with `TTMLParser`.
+    static func buildLines(_ entries: [TimedEntry], duration: TimeInterval?) -> [LyricLine] {
+        var sung: [(start: TimeInterval, end: TimeInterval, text: String, pieces: [TimedPiece])] = []
         for (index, entry) in entries.enumerated() where !entry.text.isEmpty {
             let next = entries[(index + 1)...].first { $0.time > entry.time }?.time
-            let end = next ?? max(duration ?? 0, entry.time + 5)
-            sung.append((entry.time, end, entry.text))
+            let end = entry.end ?? next ?? max(duration ?? 0, entry.time + 5)
+            sung.append((entry.time, end, entry.text, entry.pieces))
         }
 
         var lines: [LyricLine] = []
-        func add(_ start: TimeInterval, _ end: TimeInterval, _ text: String, interlude: Bool) {
-            lines.append(LyricLine(id: lines.count, start: start, end: end, text: text, isInterlude: interlude))
+        func add(_ start: TimeInterval, _ end: TimeInterval, _ text: String, pieces: [TimedPiece] = [], interlude: Bool) {
+            var line = LyricLine(id: lines.count, start: start, end: end, text: text, isInterlude: interlude)
+            if !interlude {
+                let timed = WordTiming.words(from: pieces, lineEnd: end)
+                line.words = timed.isEmpty ? WordTiming.estimate(text, start: start, end: end) : timed
+                line.hasExactWordTiming = !timed.isEmpty
+            }
+            lines.append(line)
         }
         if let first = sung.first, first.start >= interludeThreshold {
             add(0, first.start, "", interlude: true)
         }
         for (index, line) in sung.enumerated() {
-            add(line.start, line.end, line.text, interlude: false)
+            add(line.start, line.end, line.text, pieces: line.pieces, interlude: false)
             if index + 1 < sung.count {
                 let nextStart = sung[index + 1].start
                 if nextStart - line.end >= interludeThreshold {

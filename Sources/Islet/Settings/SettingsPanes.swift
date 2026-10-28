@@ -1,4 +1,5 @@
 import AppKit
+import IsletCore
 import SwiftUI
 
 /// The contents of each Settings page. Options that only matter when another one is on
@@ -144,7 +145,13 @@ extension SettingsView {
             Text("\"Whatever Is Playing\" follows any app. Choosing Apple Music or Spotify follows only that app.")
         }
 
-        Section("Lyrics") {
+        Section {
+            Picker("Style", selection: $settings.lyricStyle.animation(reveal)) {
+                ForEach(LyricStyle.allCases) { Text($0.title).tag($0) }
+            }
+            if settings.lyricStyle != .classic {
+                Toggle("Icons for words", isOn: $settings.lyricWordIcons)
+            }
             Toggle("Current line in the open island", isOn: $settings.showIslandLyrics)
             sliderRow("Timing", value: $settings.lyricsOffset, in: AppSettings.lyricsOffsetRange,
                       low: "Later", high: "Earlier", readout: seconds(settings.lyricsOffset))
@@ -152,8 +159,55 @@ extension SettingsView {
                 Button("Reset Timing") { withAnimation(reveal) { settings.lyricsOffset = 0 } }
                     .transition(.opacity)
             }
+        } header: {
+            Text("Lyrics")
+        } footer: {
+            switch settings.lyricStyle {
+            case .classic: Text("The whole line lights up as it's sung.")
+            case .wordByWord: Text("Each word lights up as it's sung. Words are timed by Apple Music when you add your tokens below, and otherwise estimated from LRCLIB's line timing.")
+            case .fisheye: Text("The word being sung swells, like a lens moving along the line. Words are timed by Apple Music when you add your tokens below, and otherwise estimated from LRCLIB's line timing.")
+            }
         }
         .animation(reveal, value: settings.lyricsOffset == 0)
+
+        Section {
+            Toggle("Show lyrics on screen", isOn: $settings.screenLyrics.animation(reveal))
+            if settings.screenLyrics {
+                Picker("Where", selection: $settings.screenLyricsPlace) {
+                    ForEach(ScreenLyricsPlace.allCases) { Text($0.title).tag($0) }
+                }
+                Picker("Font", selection: $settings.screenLyricsFont) {
+                    ForEach(ScreenLyricsFont.allCases) { Text($0.title).tag($0) }
+                }
+                sliderRow("Size", value: $settings.screenLyricsSize, in: AppSettings.screenLyricsSizeRange,
+                          low: "Smaller", high: "Larger", readout: "\(Int((settings.screenLyricsSize * 100).rounded()))%")
+                Toggle("Icons for words", isOn: $settings.lyricWordIcons)
+                Toggle("Match album colors", isOn: $settings.screenLyricsAutoColors.animation(reveal))
+                if !settings.screenLyricsAutoColors {
+                    ColorPicker("Lyric text", selection: color(\.screenLyricsTextColor), supportsOpacity: false)
+                    ColorPicker("Highlight", selection: color(\.screenLyricsHighlightColor), supportsOpacity: false)
+                    ColorPicker("Highlighted text", selection: color(\.screenLyricsHighlightTextColor), supportsOpacity: false)
+                    Button("Reset Colors") { settings.resetScreenLyricsColors() }
+                }
+                Toggle("Keep the screen on while they show", isOn: $settings.screenLyricsKeepAwake)
+            }
+        } header: {
+            Text("On Screen")
+        } footer: {
+            Text("Big lyrics in the middle of the screen, a word at a time: the word being sung appears in a highlight box, then rolls up and grows as the next one comes. Shows while music with synced lyrics plays.")
+        }
+
+        Section {
+            Toggle("Glow around the screen while music plays", isOn: $settings.edgeGlow.animation(reveal))
+            if settings.edgeGlow {
+                sliderRow("Strength", value: $settings.edgeGlowStrength, in: AppSettings.edgeGlowStrengthRange,
+                          low: "Subtle", high: "Bright", readout: "\(Int((settings.edgeGlowStrength * 100).rounded()))%")
+            }
+        } header: {
+            Text("Edge Glow")
+        } footer: {
+            Text("A soft light around the edges of the screen in the colors of the album cover. It fades away when the music stops.")
+        }
 
         Section {
             Toggle("Equalizer", isOn: $settings.equalizerEnabled.animation(reveal))
@@ -174,31 +228,54 @@ extension SettingsView {
         }
 
         Section {
-            Toggle("Motion artwork when available", isOn: $settings.animatedArtworkEnabled.animation(reveal))
-            if settings.animatedArtworkEnabled {
-                SecureField("Developer token", text: $token, prompt: Text("Paste your token"))
-                    .textFieldStyle(.roundedBorder)
-                HStack {
-                    Label(settings.developerToken == nil ? "No token saved" : "Token saved",
-                          systemImage: settings.developerToken == nil ? "key" : "checkmark.seal.fill")
-                        .foregroundStyle(settings.developerToken == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.green))
-                        .contentTransition(.symbolEffect(.replace))
-                    Spacer()
-                    if settings.developerToken != nil {
-                        Button("Remove") {
-                            settings.setDeveloperToken(nil)
-                            token = ""
-                        }
-                    }
-                    Button("Save") { settings.setDeveloperToken(token) }
-                        .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty || token == settings.developerToken)
-                }
-            }
+            Toggle("Motion artwork when available", isOn: $settings.animatedArtworkEnabled)
         } header: {
             Text("Animated Artwork")
         } footer: {
-            if settings.animatedArtworkEnabled {
-                Text("Uses the official Apple Music API, which needs a token from a paid Apple Developer account. It stays on this Mac.")
+            Text("Needs the developer token below.")
+        }
+
+        Section {
+            tokenRow("Developer token", text: $token, saved: settings.developerToken,
+                     save: settings.setDeveloperToken)
+            tokenRow("Music User Token", text: $userToken, saved: settings.musicUserToken,
+                     save: settings.setMusicUserToken)
+        } header: {
+            Text("Apple Music API")
+        } footer: {
+            Text("The developer token comes from a paid Apple Developer account and turns on motion artwork. Add your Music User Token too, and lyrics are timed word by word by Apple Music for the songs it has. Both stay on this Mac.")
+        }
+    }
+
+    /// A color well bound to one of the settings' saved colors.
+    private func color(_ keyPath: ReferenceWritableKeyPath<AppSettings, RGB>) -> Binding<Color> {
+        Binding {
+            Color(rgb: settings[keyPath: keyPath])
+        } set: { color in
+            guard let srgb = NSColor(color).usingColorSpace(.sRGB) else { return }
+            settings[keyPath: keyPath] = RGB(Double(srgb.redComponent), Double(srgb.greenComponent), Double(srgb.blueComponent))
+        }
+    }
+
+    private func tokenRow(_ title: String, text: Binding<String>, saved: String?,
+                          save: @escaping (String?) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SecureField(title, text: text, prompt: Text("Paste your token"))
+                .textFieldStyle(.roundedBorder)
+            HStack {
+                Label(saved == nil ? "Not saved" : "Saved",
+                      systemImage: saved == nil ? "key" : "checkmark.seal.fill")
+                    .foregroundStyle(saved == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.green))
+                    .contentTransition(.symbolEffect(.replace))
+                Spacer()
+                if saved != nil {
+                    Button("Remove") {
+                        save(nil)
+                        text.wrappedValue = ""
+                    }
+                }
+                Button("Save") { save(text.wrappedValue) }
+                    .disabled(text.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty || text.wrappedValue == saved)
             }
         }
     }

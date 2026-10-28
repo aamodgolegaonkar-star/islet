@@ -52,6 +52,16 @@ cp -R "$ADAPTER/build/MediaRemoteAdapter.framework" "$APP/Contents/Resources/"
 mkdir -p "$APP/Contents/Frameworks"
 cp -R "$PRODUCTS/Sparkle.framework" "$APP/Contents/Frameworks/"
 cp "$ADAPTER/bin/mediaremote-adapter.pl" "$APP/Contents/Resources/"
+# The on-screen lyrics' lens (Metal). Needs Xcode's Metal toolchain
+# (`xcodebuild -downloadComponent MetalToolchain`); without it the lyrics show without the lens.
+SHADER_TMP="$(mktemp -d)"
+if xcrun -sdk macosx metal -mmacosx-version-min=26.0 -c "$ROOT/Resources/Shaders/LyricLens.metal" -o "$SHADER_TMP/LyricLens.air" &&
+   xcrun -sdk macosx metallib "$SHADER_TMP/LyricLens.air" -o "$APP/Contents/Resources/LyricLens.metallib"; then
+    echo "Built LyricLens.metallib"
+else
+    echo "warning: Metal toolchain missing; building without the lyrics lens" >&2
+fi
+rm -rf "$SHADER_TMP"
 
 IDENTITY_NAME="Islet Local Code Signing"
 # A keychain of its own, so the script can unlock it and let codesign use the key without

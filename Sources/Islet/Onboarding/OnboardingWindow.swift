@@ -98,7 +98,7 @@ final class OnboardingController {
 /// the full tutorial shows every page, and after updating, "What's New" shows the new ones.
 enum Page: Int, CaseIterable {
     case welcome, whatsNew
-    case island, feel, player, activities, levels, controls, sound, shelf, webPlayers, lock, lockWidgets, lockCustomize, agents
+    case island, feel, player, wordLyrics, screenLyrics, edgeGlow, activities, levels, controls, sound, shelf, webPlayers, lock, lockWidgets, lockCustomize, agents
     case done
 
     /// The full tutorial, in order.
@@ -121,6 +121,7 @@ enum Page: Int, CaseIterable {
         case .controls, .sound, .levels, .webPlayers, .lockWidgets: "1.6.0"
         case .shelf: "1.6.0"
         case .lockCustomize: "1.7.0"
+        case .wordLyrics, .screenLyrics, .edgeGlow: "1.8.0"
         }
     }
 
@@ -131,6 +132,9 @@ enum Page: Int, CaseIterable {
         case .island: "Your music lives in the island"
         case .feel: "Controls you can feel"
         case .player: "A full-screen player"
+        case .wordLyrics: "Lyrics, word by word"
+        case .screenLyrics: "Lyrics on your screen"
+        case .edgeGlow: "Your screen glows with the music"
         case .activities: "Live activities"
         case .levels: "Volume and brightness, your way"
         case .controls: "Pick where sound plays"
@@ -151,7 +155,10 @@ enum Page: Int, CaseIterable {
         case .whatsNew: "Here's what this update adds. It only takes a moment."
         case .island: "Hover over the island at the top of your screen to open it. Try this one."
         case .feel: "Sliders click through detents like a dial on your trackpad. Drag this one."
-        case .player: "Click the artwork in the island for the full-screen player, with synced lyrics."
+        case .player: "Click the artwork in the island for the full-screen player, with synced lyrics. In Fisheye, click the cover and it tucks into the corner while the lyrics take the stage; click it again to bring it back."
+        case .wordLyrics: "Each word lights up as it's sung. Fisheye swells the word being sung, and icons can rise over words like \"fire\" or \"night\". Pick a style in Music & Lyrics → Lyrics."
+        case .screenLyrics: "Lock your Mac while music plays: the album cover fills the lock screen and big lyrics roll past a word at a time, in its colors. Change it in Music & Lyrics → On Screen."
+        case .edgeGlow: "While a song plays, a soft light runs around the edges of your screen in the colors of its cover. Tune it in Music & Lyrics → Edge Glow."
         case .activities: "Charging, headphones connecting, timers and low battery pop up in the island, and a dot shows when the mic or camera is on."
         case .levels: "Islet replaces the macOS volume and brightness indicator. Show it in the island or as a slider on either edge of the screen (Live Activities → Position)."
         case .controls: "Click the speaker button in the open island to switch between speakers, AirPods, HomePod or paired headphones, and set AirPods noise control."
@@ -322,6 +329,9 @@ private struct PageView: View {
         case .island: IslandDemo()
         case .feel: FeelDemo()
         case .player: PlayerDemo()
+        case .wordLyrics: WordLyricsDemo()
+        case .screenLyrics: ScreenLyricsDemo()
+        case .edgeGlow: EdgeGlowDemo()
         case .activities: ActivitiesDemo()
         case .levels: LevelsDemo()
         case .controls: OutputDemo()

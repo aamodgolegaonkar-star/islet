@@ -35,12 +35,16 @@ final class LockScreenController {
     let model = LockModel()
     /// Called once the screen unlocks (the island plays its unlock animation).
     var onUnlock: (() -> Void)?
+    /// True while the on-screen lyrics fill the lock screen, like the full-screen album: they
+    /// bring their own backdrop and clock, so the widgets, player card and motion artwork step
+    /// aside until the music stops.
+    var lyricsFillLockScreen: () -> Bool = { false }
     private(set) var isLocked = false
 
     private let store: PlayerStore
     private let settings: AppSettings
     private var observers: [DistributedObserver] = []
-    private lazy var space: SkyLightSpace? = SkyLightSpace()
+    private var space: SkyLightSpace? { SkyLightSpace.shared }
     private var onLockScreen = false
     private var presentTask: Task<Void, Never>?
     private var batteryTimer: Timer?
@@ -203,6 +207,20 @@ final class LockScreenController {
     func showPreview() { present(onLockScreen: false) }
     func hidePreview() { dismiss() }
 
+    /// The on-screen lyrics took over the lock screen (`filling`), or gave it back: hides or
+    /// brings back the widgets, player card and motion artwork they stand in for.
+    func lyricsFillChanged(_ filling: Bool) {
+        guard model.isPresented, onLockScreen, !model.isAlbumOpen, let layout,
+              let screen = NSScreen.screens.first else { return }
+        if filling {
+            for panel in [widgetsPanel, playerPanel, motionPanel] where panel.isVisible { panel.orderOut(nil) }
+        } else {
+            if settings.lockMotionBackground, !motionPanel.isVisible { show(motionPanel, at: screen.frame) }
+            if !widgetsPanel.isVisible { show(widgetsPanel, at: layout.widgets) }
+            if store.hasTrack, !playerPanel.isVisible { show(playerPanel, at: layout.player) }
+        }
+    }
+
     // MARK: - Presentation
 
     private func present(onLockScreen: Bool) {
@@ -230,7 +248,8 @@ final class LockScreenController {
         albumPanel.orderOut(nil)
 
         // First, so it sits under the widgets in the lock screen's space too.
-        if settings.lockMotionBackground {
+        let lyrics = lyricsFillLockScreen()
+        if settings.lockMotionBackground, !lyrics {
             show(motionPanel, at: screen.frame)
         }
 
@@ -241,9 +260,13 @@ final class LockScreenController {
         show(islandPanel, at: CGRect(x: screen.frame.midX - islandSize.width / 2, y: screen.frame.maxY - islandSize.height,
                                      width: islandSize.width, height: islandSize.height))
         islandModel.wallpaper = Wallpaper.context(for: screen, windowFrame: islandPanel.frame)
-        show(widgetsPanel, at: layout.widgets)
+        if lyrics {
+            widgetsPanel.orderOut(nil)
+        } else {
+            show(widgetsPanel, at: layout.widgets)
+        }
         model.widgetsWallpaper = Wallpaper.context(for: screen, windowFrame: widgetsPanel.frame)
-        if store.hasTrack {
+        if store.hasTrack, !lyrics {
             show(playerPanel, at: layout.player)
             model.playerWallpaper = Wallpaper.context(for: screen, windowFrame: playerPanel.frame)
         } else {

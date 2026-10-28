@@ -137,6 +137,7 @@ struct SettingsView: View {
     @State var agentError: String?
     @State var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State var token = ""
+    @State var userToken = ""
     @State var tryValue = 0.4
 
     private var pane: SettingsPane { SettingsPane(rawValue: paneName) ?? .island }
@@ -184,6 +185,7 @@ struct SettingsView: View {
         .onChange(of: settings.playerSource) { sourceChanged() }
         .onAppear {
             token = settings.developerToken ?? ""
+            userToken = settings.musicUserToken ?? ""
             autoUpdate = updater.automaticallyChecksForUpdates
         }
     }

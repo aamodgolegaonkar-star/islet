@@ -13,6 +13,9 @@ struct LockLayout {
     /// Height of the clock area from the top of the screen; the full-screen album lays
     /// out below it and draws the clock inside it.
     let clockInset: CGFloat
+    /// Everything between the clock and the password field (Cocoa coordinates): where the
+    /// on-screen lyrics go when they take over the lock screen.
+    let content: CGRect
 
     static let widgetsSize = CGSize(width: 640, height: 104)
     static let playerSize = CGSize(width: 460, height: 224)
@@ -47,6 +50,9 @@ struct LockLayout {
         player = cocoaRect(top: playerTop, size: Self.playerSize)
 
         clockInset = clockBottom + 18
+        let contentTop = clockBottom + 18
+        content = CGRect(x: frame.minX, y: frame.maxY - regionBottom,
+                         width: frame.width, height: max(regionBottom - contentTop, 0))
     }
 
     /// Frames of loginwindow's on-screen windows (global, top-left origin). Logged so the

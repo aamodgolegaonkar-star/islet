@@ -1,4 +1,5 @@
 import Foundation
+import IsletCore
 import Observation
 
 enum LockSoundStyle: String, CaseIterable, Identifiable {
@@ -72,6 +73,60 @@ enum IslandStyle: String, CaseIterable, Identifiable {
 }
 
 /// Where the volume and brightness level appears.
+/// How the full-screen and lock-screen lyrics draw the line being sung.
+enum LyricStyle: String, CaseIterable, Identifiable {
+    /// The whole line lights up at once.
+    case classic
+    /// Each word lights up as it's sung.
+    case wordByWord
+    /// Words light up, and the one being sung swells like a lens passing along the line.
+    case fisheye
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .classic: "Line by Line"
+        case .wordByWord: "Word by Word"
+        case .fisheye: "Fisheye"
+        }
+    }
+}
+
+/// Where the big on-screen lyrics show.
+enum ScreenLyricsPlace: String, CaseIterable, Identifiable {
+    case lockScreen
+    case everywhere
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .lockScreen: "Lock Screen Only"
+        case .everywhere: "Lock Screen and Desktop"
+        }
+    }
+}
+
+/// Typefaces for the on-screen lyrics (Verci's list), all bold.
+enum ScreenLyricsFont: String, CaseIterable, Identifiable {
+    case sfPro, sfRounded, newYork, helveticaNeue, avenirNext, futura, didot
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sfPro: "SF Pro"
+        case .sfRounded: "SF Rounded"
+        case .newYork: "New York"
+        case .helveticaNeue: "Helvetica Neue"
+        case .avenirNext: "Avenir Next"
+        case .futura: "Futura"
+        case .didot: "Didot"
+        }
+    }
+}
+
 enum LevelPosition: String, CaseIterable, Identifiable {
     case island
     case leftEdge
@@ -189,6 +244,19 @@ final class AppSettings {
         static let privacyDots = "showPrivacyDots"
         static let lowBattery = "showLowBattery"
         static let islandLyrics = "showIslandLyrics"
+        static let lyricStyle = "lyricStyle"
+        static let wordIcons = "lyricWordIcons"
+        static let screenLyrics = "screenLyrics"
+        static let screenLyricsPlace = "screenLyricsPlace"
+        static let screenLyricsSize = "screenLyricsSize"
+        static let screenLyricsFont = "screenLyricsFont"
+        static let screenLyricsAutoColors = "screenLyricsAutoColors"
+        static let screenLyricsText = "screenLyricsTextColor"
+        static let screenLyricsHighlight = "screenLyricsHighlightColor"
+        static let screenLyricsBoxText = "screenLyricsHighlightTextColor"
+        static let screenLyricsAwake = "screenLyricsKeepAwake"
+        static let edgeGlow = "edgeGlow"
+        static let edgeGlowStrength = "edgeGlowStrength"
         static let shelfCopies = "shelfKeepsCopies"
         static let emulateNotch = AppSettings.emulateNotchKey
         static let levelPosition = "levelPosition"
@@ -262,6 +330,72 @@ final class AppSettings {
     var lyricsOffset: Double {
         didSet { save(lyricsOffset, Key.lyricsOffset); LiveTuning.shared.lyricsOffset = lyricsOffset }
     }
+    var lyricStyle: LyricStyle {
+        didSet { defaults.set(lyricStyle.rawValue, forKey: Key.lyricStyle); LiveTuning.shared.lyricStyle = lyricStyle }
+    }
+    /// Small pictures over words like "fire" or "rain" as they're sung.
+    var lyricWordIcons: Bool {
+        didSet { defaults.set(lyricWordIcons, forKey: Key.wordIcons); LiveTuning.shared.lyricWordIcons = lyricWordIcons }
+    }
+    /// Big lyrics on the screen itself, a word at a time, while music plays.
+    var screenLyrics: Bool {
+        didSet { defaults.set(screenLyrics, forKey: Key.screenLyrics) }
+    }
+    var screenLyricsPlace: ScreenLyricsPlace {
+        didSet { defaults.set(screenLyricsPlace.rawValue, forKey: Key.screenLyricsPlace) }
+    }
+    var screenLyricsSize: Double {
+        didSet { save(screenLyricsSize, Key.screenLyricsSize) }
+    }
+    var screenLyricsFont: ScreenLyricsFont {
+        didSet { defaults.set(screenLyricsFont.rawValue, forKey: Key.screenLyricsFont); LiveTuning.shared.screenLyricsFont = screenLyricsFont }
+    }
+    /// Colors from the album artwork instead of the three picked below.
+    var screenLyricsAutoColors: Bool {
+        didSet { defaults.set(screenLyricsAutoColors, forKey: Key.screenLyricsAutoColors); publishScreenLyricsColors() }
+    }
+    /// Words already sung.
+    var screenLyricsTextColor: RGB {
+        didSet { defaults.set(screenLyricsTextColor.hex, forKey: Key.screenLyricsText); publishScreenLyricsColors() }
+    }
+    /// The box behind the word being sung, and the icons.
+    var screenLyricsHighlightColor: RGB {
+        didSet { defaults.set(screenLyricsHighlightColor.hex, forKey: Key.screenLyricsHighlight); publishScreenLyricsColors() }
+    }
+    /// The word being sung, inside its box.
+    var screenLyricsHighlightTextColor: RGB {
+        didSet { defaults.set(screenLyricsHighlightTextColor.hex, forKey: Key.screenLyricsBoxText); publishScreenLyricsColors() }
+    }
+
+    /// The player draws the Fisheye lyrics too, from `LiveTuning`.
+    private func publishScreenLyricsColors() {
+        LiveTuning.shared.screenLyricsColors = screenLyricsAutoColors
+            ? nil : [screenLyricsTextColor, screenLyricsHighlightColor, screenLyricsHighlightTextColor]
+    }
+    /// The display stays on while the on-screen lyrics show (the lock screen dims after a minute).
+    var screenLyricsKeepAwake: Bool {
+        didSet { defaults.set(screenLyricsKeepAwake, forKey: Key.screenLyricsAwake) }
+    }
+
+    /// A soft light around the screen's edges in the album's colors while music plays.
+    var edgeGlow: Bool {
+        didSet { defaults.set(edgeGlow, forKey: Key.edgeGlow) }
+    }
+    var edgeGlowStrength: Double {
+        didSet { save(edgeGlowStrength, Key.edgeGlowStrength) }
+    }
+
+    static let edgeGlowStrengthRange: ClosedRange<Double> = 0.3...1
+    static let screenLyricsSizeRange: ClosedRange<Double> = 0.5...1.5
+    static let defaultScreenLyricsColors = (text: RGB(0.91, 0.58, 0.47), highlight: RGB(0.86, 0.38, 0.49),
+                                            highlightText: RGB(1, 1, 1))
+
+    func resetScreenLyricsColors() {
+        screenLyricsTextColor = Self.defaultScreenLyricsColors.text
+        screenLyricsHighlightColor = Self.defaultScreenLyricsColors.highlight
+        screenLyricsHighlightTextColor = Self.defaultScreenLyricsColors.highlightText
+    }
+
     /// Which player Islet follows.
     var playerSource: PlayerSource {
         didSet { defaults.set(playerSource.rawValue, forKey: Key.source) }
@@ -359,11 +493,15 @@ final class AppSettings {
     }
     /// Apple Music API developer token (paid Apple Developer Program), stored in a 0600 file.
     private(set) var developerToken: String?
+    /// Apple Music user token (the user's own subscription), stored the same way. With the
+    /// developer token it unlocks Apple's word-timed lyrics.
+    private(set) var musicUserToken: String?
 
     let supportDirectory: URL
     var lyricsCacheDirectory: URL { supportDirectory.appending(path: "LyricsCache") }
     var customSoundsDirectory: URL { supportDirectory.appending(path: "Sounds") }
     private var tokenURL: URL { supportDirectory.appending(path: "developer-token") }
+    private var userTokenURL: URL { supportDirectory.appending(path: "music-user-token") }
 
     init() {
         defaults.register(defaults: [
@@ -392,6 +530,17 @@ final class AppSettings {
             Key.shelf: true,
             Key.privacyDots: true,
             Key.islandLyrics: true,
+            Key.lyricStyle: LyricStyle.wordByWord.rawValue,
+            Key.wordIcons: false,
+            Key.screenLyrics: true,
+            // The desktop is for working: big lyrics there only when asked for.
+            Key.screenLyricsPlace: ScreenLyricsPlace.lockScreen.rawValue,
+            Key.screenLyricsFont: ScreenLyricsFont.sfPro.rawValue,
+            Key.screenLyricsSize: 1.0,
+            Key.screenLyricsAutoColors: true,
+            Key.screenLyricsAwake: true,
+            Key.edgeGlow: true,
+            Key.edgeGlowStrength: 0.8,
             Key.lowBattery: true,
             Key.levelPosition: LevelPosition.island.rawValue,
             Key.clipboard: true,
@@ -431,6 +580,20 @@ final class AppSettings {
         showPrivacyDots = defaults.bool(forKey: Key.privacyDots)
         showLowBattery = defaults.bool(forKey: Key.lowBattery)
         showIslandLyrics = defaults.bool(forKey: Key.islandLyrics)
+        lyricStyle = LyricStyle(rawValue: defaults.string(forKey: Key.lyricStyle) ?? "") ?? .wordByWord
+        lyricWordIcons = defaults.bool(forKey: Key.wordIcons)
+        screenLyrics = defaults.bool(forKey: Key.screenLyrics)
+        screenLyricsPlace = ScreenLyricsPlace(rawValue: defaults.string(forKey: Key.screenLyricsPlace) ?? "") ?? .lockScreen
+        screenLyricsFont = ScreenLyricsFont(rawValue: defaults.string(forKey: Key.screenLyricsFont) ?? "") ?? .sfPro
+        screenLyricsSize = Self.clamped(defaults.double(forKey: Key.screenLyricsSize), Self.screenLyricsSizeRange)
+        screenLyricsAutoColors = defaults.bool(forKey: Key.screenLyricsAutoColors)
+        let colors = Self.defaultScreenLyricsColors
+        screenLyricsTextColor = defaults.string(forKey: Key.screenLyricsText).flatMap(RGB.init(hex:)) ?? colors.text
+        screenLyricsHighlightColor = defaults.string(forKey: Key.screenLyricsHighlight).flatMap(RGB.init(hex:)) ?? colors.highlight
+        screenLyricsHighlightTextColor = defaults.string(forKey: Key.screenLyricsBoxText).flatMap(RGB.init(hex:)) ?? colors.highlightText
+        screenLyricsKeepAwake = defaults.bool(forKey: Key.screenLyricsAwake)
+        edgeGlow = defaults.bool(forKey: Key.edgeGlow)
+        edgeGlowStrength = Self.clamped(defaults.double(forKey: Key.edgeGlowStrength), Self.edgeGlowStrengthRange)
         shelfKeepsCopies = defaults.bool(forKey: Key.shelfCopies)
         emulateNotch = defaults.bool(forKey: Key.emulateNotch)
         levelPosition = LevelPosition(rawValue: defaults.string(forKey: Key.levelPosition) ?? "") ?? .island
@@ -472,15 +635,18 @@ final class AppSettings {
         live.detentSpacing = detentSpacing
         live.lyricsOffset = lyricsOffset
         live.showIslandLyrics = showIslandLyrics
+        live.lyricStyle = lyricStyle
+        live.lyricWordIcons = lyricWordIcons
+        live.screenLyricsFont = screenLyricsFont
+        publishScreenLyricsColors()
         live.saverMode = batterySaver
         live.refreshBatterySaving()
 
         let fm = FileManager.default
         try? fm.createDirectory(at: lyricsCacheDirectory, withIntermediateDirectories: true)
         try? fm.createDirectory(at: customSoundsDirectory, withIntermediateDirectories: true)
-        developerToken = (try? String(contentsOf: tokenURL, encoding: .utf8))?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nilIfEmpty
+        developerToken = Self.readToken(tokenURL)
+        musicUserToken = Self.readToken(userTokenURL)
     }
 
     static let sizeRange: ClosedRange<Double> = 0.8...1.3
@@ -516,14 +682,29 @@ final class AppSettings {
     }
 
     func setDeveloperToken(_ token: String?) {
+        developerToken = Self.writeToken(token, to: tokenURL)
+    }
+
+    func setMusicUserToken(_ token: String?) {
+        musicUserToken = Self.writeToken(token, to: userTokenURL)
+    }
+
+    private static func readToken(_ url: URL) -> String? {
+        (try? String(contentsOf: url, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+    }
+
+    /// Saves (or, for nil, deletes) a token readable only by this user; returns what was saved.
+    private static func writeToken(_ token: String?, to url: URL) -> String? {
         let cleaned = token?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        developerToken = cleaned
         if let cleaned {
-            FileManager.default.createFile(atPath: tokenURL.path, contents: Data(cleaned.utf8),
+            FileManager.default.createFile(atPath: url.path, contents: Data(cleaned.utf8),
                                            attributes: [.posixPermissions: 0o600])
         } else {
-            try? FileManager.default.removeItem(at: tokenURL)
+            try? FileManager.default.removeItem(at: url)
         }
+        return cleaned
     }
 }
 
@@ -543,6 +724,11 @@ final class LiveTuning {
     var detentSpacing = 5.0
     var lyricsOffset = 0.0
     var showIslandLyrics = true
+    var lyricStyle = LyricStyle.wordByWord
+    var lyricWordIcons = false
+    var screenLyricsFont = ScreenLyricsFont.sfPro
+    /// Text, highlight and highlighted-text colors the user picked; nil: from the album.
+    var screenLyricsColors: [RGB]?
     var saverMode = BatterySaver.automatic
     /// True while Islet should save power: label updates once a second, slower equalizer,
     /// a slower-moving background and no motion-artwork video.

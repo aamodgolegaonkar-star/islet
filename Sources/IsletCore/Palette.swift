@@ -155,3 +155,39 @@ public enum TimeText {
         "-" + string(max(0, duration.rounded(.down) - elapsed.rounded(.down)))
     }
 }
+
+extension RGB {
+    /// "#RRGGBB" or "#RRGGBBAA" (alpha is ignored), as colors are saved in Settings.
+    public init?(hex: String) {
+        var digits = hex.trimmingCharacters(in: .whitespaces)
+        if digits.hasPrefix("#") { digits.removeFirst() }
+        guard digits.count == 6 || digits.count == 8, let value = UInt64(digits.prefix(6), radix: 16) else { return nil }
+        self.init(Double((value >> 16) & 0xFF) / 255, Double((value >> 8) & 0xFF) / 255, Double(value & 0xFF) / 255)
+    }
+
+    public var hex: String {
+        func byte(_ v: Double) -> Int { Int((min(max(v, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(r), byte(g), byte(b))
+    }
+}
+
+extension Palette {
+    /// Bright versions of the album's colors for light (the screen-edge glow): the accent
+    /// first, then each background color at full brightness and at least medium saturation.
+    /// Grays would only dull the light, so they're left out unless the cover has nothing
+    /// else, when it glows a soft white. Near-duplicates are dropped.
+    public var glowColors: [RGB] {
+        // Chroma (how far apart the channels are), not saturation: a near-black with a faint
+        // tint has high saturation but no real color, and brightening it would invent one.
+        func isColorful(_ color: RGB) -> Bool { max(color.r, color.g, color.b) - min(color.r, color.g, color.b) >= 0.08 }
+        let all = [accent] + colors
+        let colorful = all.filter(isColorful)
+        var glow: [RGB] = []
+        for color in colorful.isEmpty ? all : colorful {
+            let (h, s, _) = color.hsb
+            let bright = RGB(hue: h, saturation: isColorful(color) ? max(s, 0.55) : 0, brightness: 1)
+            if !glow.contains(where: { $0.distanceSquared(bright) < 0.04 }) { glow.append(bright) }
+        }
+        return glow
+    }
+}

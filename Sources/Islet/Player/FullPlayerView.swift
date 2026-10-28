@@ -1,8 +1,12 @@
 import SwiftUI
 
-/// Frames for the full-screen player in both modes. Computed explicitly (instead of
+/// Frames for the full-screen player in its modes. Computed explicitly (instead of
 /// stacks) so the hero animation knows exactly where the cover lands. `topInset` reserves
 /// space at the top (the lock screen's clock); everything else lays out below it.
+///
+/// With lyrics on: the lyrics column beside the cover, or, for Fisheye (`stage`), the cover
+/// small in the bottom-left corner with the controls beside it and the big word stack
+/// filling everything above.
 struct PlayerLayout {
     let cover: CGRect
     let controls: CGRect
@@ -11,10 +15,20 @@ struct PlayerLayout {
 
     static let controlsHeight: CGFloat = 264
 
-    init(size: CGSize, showLyrics: Bool, topInset: CGFloat = 0) {
+    init(size: CGSize, showLyrics: Bool, stage: Bool = false, topInset: CGFloat = 0) {
         let w = size.width, y0 = topInset, h = size.height - topInset
         let minTop: CGFloat = topInset > 0 ? 14 : 48
-        if showLyrics {
+        if showLyrics, stage {
+            let margin: CGFloat = 36
+            let bottom = y0 + h - margin
+            let side = min(h * 0.22, 190)
+            cover = CGRect(x: margin, y: bottom - side, width: side, height: side)
+            controls = CGRect(x: cover.maxX + 30, y: bottom - Self.controlsHeight + 22,
+                              width: min(420, w - cover.maxX - 30 - margin), height: Self.controlsHeight)
+            // Above the corner, clear of the close button.
+            let top = y0 + max(minTop, 80)
+            lyrics = CGRect(x: 0, y: top, width: w, height: max(controls.minY - 12 - top, 120))
+        } else if showLyrics {
             let side = min(h * 0.42, w * 0.29, 480, h - Self.controlsHeight - 30 - minTop * 2)
             let centerX = w * 0.27
             let top = y0 + max(minTop, h / 2 - (side + 30 + Self.controlsHeight) / 2)
@@ -52,7 +66,8 @@ struct FullPlayerView: View {
     private var player: some View {
         GeometryReader { geo in
             let size = geo.size
-            let layout = PlayerLayout(size: size, showLyrics: model.showLyrics, topInset: topInset)
+            let stage = LiveTuning.shared.lyricStyle == .fisheye
+            let layout = PlayerLayout(size: size, showLyrics: model.showLyrics, stage: stage, topInset: topInset)
             let open = model.isOpen
             let background = open ? CGRect(origin: .zero, size: size) : model.origin
             let cover = open ? layout.cover : model.origin
@@ -92,7 +107,13 @@ struct FullPlayerView: View {
                     .animation(.easeOut(duration: open ? 0.4 : 0.12).delay(open ? 0.14 : 0), value: open)
 
                 if model.showLyrics {
-                    LyricsPanel(store: store)
+                    Group {
+                        if stage {
+                            StageLyrics(store: store, size: layout.lyrics.size)
+                        } else {
+                            LyricsPanel(store: store)
+                        }
+                    }
                         .frame(width: layout.lyrics.width, height: layout.lyrics.height)
                         .offset(x: layout.lyrics.minX, y: layout.lyrics.minY)
                         .opacity(open ? 1 : 0)

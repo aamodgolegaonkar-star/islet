@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var island: IslandController!
     private var player: FullPlayerController!
     private var lockScreen: LockScreenController!
+    private var screenLyrics: ScreenLyricsController?
+    private var edgeGlow: EdgeGlowController?
     private var statusMenu: StatusMenuController!
     private var debugTools: DebugTools?
     private var settingsWindow: SettingsController!
@@ -25,10 +27,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let island = IslandController(store: store, settings: settings)
         let player = FullPlayerController(store: store)
         let lockScreen = LockScreenController(store: store, settings: settings)
+        let screenLyrics = ScreenLyricsController(store: store, settings: settings)
+        self.screenLyrics = screenLyrics
+        let edgeGlow = EdgeGlowController(store: store, settings: settings)
+        self.edgeGlow = edgeGlow
+        lockScreen.lyricsFillLockScreen = { [weak screenLyrics] in screenLyrics?.fillsLockScreen ?? false }
+        screenLyrics.onLockScreenFillChange = { [weak lockScreen] filling in lockScreen?.lyricsFillChanged(filling) }
 
         island.onOpenPlayer = { [weak player] rect in player?.open(from: rect) }
         player.closeTarget = { [weak island] in island?.artScreenRect() }
-        player.onVisibilityChange = { [weak island] visible in island?.setPlayerVisible(visible) }
+        player.onVisibilityChange = { [weak island, weak screenLyrics] visible in
+            island?.setPlayerVisible(visible)
+            screenLyrics?.setPlayerVisible(visible)
+        }
 
         statusMenu = StatusMenuController(
             store: store, settings: settings, lockScreen: lockScreen,
@@ -44,8 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.lockScreen = lockScreen
 
         debugTools = DebugTools(island: island, player: player, lockScreen: lockScreen, settings: settings)
+        debugTools?.screenLyrics = screenLyrics
+        debugTools?.edgeGlow = edgeGlow
 
         store.start()
+        screenLyrics.start()
+        edgeGlow.start()
         stopCleanlyOnSignals()
         island.show()
         PowerMonitor.shared.onPluggedIn = { [weak island] battery in island?.showCharging(battery) }
@@ -167,6 +182,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AudioTapEngine.shared.stop()
         store?.stop()
         lockScreen?.shutdown()
+        screenLyrics?.stop()
+        edgeGlow?.stop()
     }
 
     /// `kill`, logout scripts and Ctrl-C bypass applicationWillTerminate; without this the

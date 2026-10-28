@@ -22,7 +22,18 @@ final class PlayerStore {
     private(set) var hiResArtwork: NSImage?
     private(set) var palette: Palette = .fallback
     private(set) var motion: MotionArtwork?
-    private(set) var lyrics: LyricsState = .idle
+    private(set) var lyrics: LyricsState = .idle {
+        didSet {
+            guard lyrics != oldValue else { return }
+            if case .synced(let lines) = lyrics {
+                wordStream = WordStream(lines: lines)
+            } else {
+                wordStream = WordStream(lines: [])
+            }
+        }
+    }
+    /// Every sung word in order, for the Fisheye stack (built once per song, not per frame).
+    private(set) var wordStream = WordStream(lines: [])
     private(set) var volume: Double = 0.5
     private(set) var sourceName = "Connecting…"
     /// Increments on every song change; drives the island's "bump".
@@ -60,6 +71,9 @@ final class PlayerStore {
     @ObservationIgnored private var usingFallback = false
     @ObservationIgnored private let systemVolume = SystemVolume()
     @ObservationIgnored private let lyricsClient: LRCLIBClient
+    @ObservationIgnored private let appleLyricsClient: AppleMusicLyricsClient
+    /// Tokens Apple refused; not tried again until they change.
+    @ObservationIgnored private var refusedCredentials: AppleMusicLyricsClient.Credentials?
     @ObservationIgnored private let lookup = ITunesLookup()
     @ObservationIgnored private var lyricsTask: Task<Void, Never>?
     @ObservationIgnored private var lookupTask: Task<Void, Never>?
@@ -78,6 +92,14 @@ final class PlayerStore {
         lyricsClient = LRCLIBClient(
             userAgent: "Islet/1.0 (personal macOS now-playing app)",
             cacheDirectory: settings.lyricsCacheDirectory)
+        appleLyricsClient = AppleMusicLyricsClient(cacheDirectory: settings.lyricsCacheDirectory)
+    }
+
+    /// Both Apple Music tokens, when the user has saved them; otherwise lyrics come from LRCLIB alone.
+    private var appleCredentials: AppleMusicLyricsClient.Credentials? {
+        guard let developer = settings.developerToken, let user = settings.musicUserToken else { return nil }
+        return .init(developerToken: developer, userToken: user,
+                     storefront: Locale.current.region?.identifier.lowercased() ?? "us")
     }
 
     func start() {
@@ -459,6 +481,12 @@ final class PlayerStore {
         }
     }
 
+    /// Gives lyric words their pictures (used when Settings turns word icons on). Tagging
+    /// words takes a few milliseconds per song, so it runs off the main thread.
+    private nonisolated static func withSymbols(_ lines: [LyricLine]) async -> [LyricLine] {
+        await Task.detached(priority: .utility) { WordSymbols.system?.annotate(lines) ?? lines }.value
+    }
+
     private func trackDidChange(_ track: NowPlayingSnapshot) {
         trackChangeCount += 1
         Log.media.info("Track: \(track.title, privacy: .public) — \(track.artist, privacy: .public) [\(track.bundleIdentifier, privacy: .public)]")
@@ -487,7 +515,32 @@ final class PlayerStore {
         let key = track.trackKey
         let (title, artist, album, duration) = (track.title, track.artist, track.album, track.duration)
         let client = lyricsClient
+        let apple = appleLyricsClient
+        let credentials = appleCredentials.flatMap { $0 == refusedCredentials ? nil : $0 }
         lyricsTask = Task { [weak self] in
+            // Apple Music times every word; try it first when the user has given Islet the tokens.
+            if let credentials {
+                do {
+                    if let ttml = try await apple.ttml(title: title, artist: artist, duration: duration, credentials: credentials) {
+                        let lines = TTMLParser.parse(ttml)
+                        if !lines.isEmpty {
+                            let pictured = await Self.withSymbols(lines)
+                            guard let self, !Task.isCancelled, self.lastTrackKey == key else { return }
+                            self.lyrics = .synced(pictured)
+                            let exact = lines.contains(where: \.hasExactWordTiming)
+                            Log.lyrics.info("Apple Music lyrics: \(lines.count) rows, timed by \(exact ? "word" : "line", privacy: .public)")
+                            return
+                        }
+                    }
+                    Log.lyrics.info("No Apple Music lyrics; trying LRCLIB")
+                } catch AppleMusicLyricsClient.Failure.unauthorized {
+                    Log.lyrics.error("Apple Music refused the tokens; using LRCLIB until they change")
+                    self?.refusedCredentials = credentials
+                } catch {
+                    Log.lyrics.notice("Apple Music lyrics failed (\(String(describing: error), privacy: .public)); trying LRCLIB")
+                }
+                guard !Task.isCancelled else { return }
+            }
             // A failed request (offline after wake, a timeout, rate limiting) is not "no
             // lyrics": retry a few times before giving up. A real "not found" returns at once.
             var content: LyricsContent?
@@ -507,12 +560,16 @@ final class PlayerStore {
                     guard !Task.isCancelled else { return }
                 }
             }
+            var lines: [LyricLine] = []
+            if case .synced(let lrc)? = content {
+                lines = await Self.withSymbols(LRCParser.parse(lrc, duration: duration))
+            }
             guard let self, !Task.isCancelled, self.lastTrackKey == key else { return }
             switch content {
-            case .synced(let lrc)?:
-                let lines = LRCParser.parse(lrc, duration: duration)
+            case .synced?:
                 self.lyrics = lines.isEmpty ? .unavailable : .synced(lines)
-                Log.lyrics.info("Synced lyrics: \(lines.count) rows")
+                let exact = lines.contains(where: \.hasExactWordTiming)
+                Log.lyrics.info("Synced lyrics: \(lines.count) rows, words \(exact ? "timed" : "estimated", privacy: .public)")
             case .plain(let text)?: self.lyrics = .plain(text)
             case .instrumental?: self.lyrics = .instrumental
             case nil:

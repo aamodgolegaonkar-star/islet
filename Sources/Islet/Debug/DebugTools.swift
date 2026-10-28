@@ -14,6 +14,9 @@ final class DebugTools: NSObject {
     private let player: FullPlayerController
     private let lockScreen: LockScreenController
     private let settings: AppSettings
+    /// Set after launch; nil in previews.
+    weak var screenLyrics: ScreenLyricsController?
+    weak var edgeGlow: EdgeGlowController?
 
     static var isEnabled: Bool { UserDefaults.standard.bool(forKey: "debugTools") }
 
@@ -140,6 +143,14 @@ final class DebugTools: NSObject {
         case "lock.lyrics": lockScreen.debugToggleLyrics()
         case "lock.collapse": lockScreen.model.collapse()
         case "lock.hide": lockScreen.hidePreview()
+        case "screen.lock": screenLyrics?.debugSetLocked(true)
+        case "screen.unlock": screenLyrics?.debugSetLocked(false)
+        case "glow.lock": edgeGlow?.debugSetLocked(true)
+        case "windows":
+            for window in NSApp.windows {
+                Log.media.notice("Window \(window.identifier?.rawValue ?? "-", privacy: .public) visible \(window.isVisible) alpha \(window.alphaValue) onActiveSpace \(window.isOnActiveSpace) level \(window.level.rawValue) frame \(window.frame.debugDescription, privacy: .public)")
+            }
+        case "glow.unlock": edgeGlow?.debugSetLocked(false)
         default:
             if command.hasPrefix("style."), let style = IslandStyle(rawValue: String(command.dropFirst(6))) {
                 settings.islandStyle = style

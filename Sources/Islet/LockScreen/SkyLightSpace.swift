@@ -14,6 +14,10 @@ final class SkyLightSpace {
     private typealias ShowSpacesFn = @convention(c) (Int32, CFArray) -> Int32
     private typealias AddWindowsFn = @convention(c) (Int32, UInt64, CFArray, Int32) -> Int32
 
+    /// The one lock-screen space Islet uses, so its lock-screen windows stack by level
+    /// (widgets over the lyrics backdrop) instead of by which space happens to be on top.
+    static let shared: SkyLightSpace? = SkyLightSpace()
+
     private let connection: Int32
     private let space: UInt64
     private let addWindows: AddWindowsFn
