@@ -512,8 +512,13 @@ final class WaveformLevels {
     }
 
     var isLive: Bool { !levels.isEmpty }
+    /// Every new frame of levels, for listeners that need each one (the edge glow's beat).
+    @ObservationIgnored var onFrame: (([Float]) -> Void)?
 
-    func set(_ new: [Float]) { levels = new }
+    func set(_ new: [Float]) {
+        levels = new
+        onFrame?(new)
+    }
     func clear() { if !levels.isEmpty { levels = [] } }
     func appeared() { viewers += 1 }
     func disappeared() { viewers = max(0, viewers - 1) }

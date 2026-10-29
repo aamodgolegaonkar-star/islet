@@ -87,17 +87,26 @@ struct ScreenLyricsView: View {
         let band = CGSize(width: screen.width, height: min(model.wordSize * 4.6, screen.height))
         return TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !model.isVisible || !store.isPlaying)) { context in
             let time = store.lyricsPosition(at: context.date) + Self.lead
-            let stream = model.stream
-            let current = stream.isResting(at: time) ? nil : stream.index(at: time)
-            WordStack(words: stream.words, current: current,
-                      progress: current.map { WordStack.progress(of: stream.words[$0], at: time) } ?? 0,
-                      size: model.wordSize, font: settings.screenLyricsFont,
-                      ink: ScreenInk.current(palette: store.palette), icons: settings.lyricWordIcons,
-                      maxWidth: model.maxWordWidth, lensed: LyricLens.isAvailable)
-                .frame(width: band.width, height: band.height)
-                .lyricLens(size: band)
-                .offset(y: model.centerOffset)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            let ink = ScreenInk.current(palette: store.palette)
+            Group {
+                if settings.screenLyricsStyle == .wall, case .synced(let lines) = store.lyrics {
+                    WallLyrics(lines: lines, time: time, size: (model.wordSize * 0.36).rounded(),
+                               font: settings.screenLyricsFont, ink: ink, icons: settings.lyricWordIcons,
+                               maxWidth: screen.width * 0.7)
+                        .frame(width: band.width, height: band.height)
+                } else {
+                    let stream = model.stream
+                    let current = stream.isResting(at: time) ? nil : stream.index(at: time)
+                    WordStack(words: stream.words, current: current,
+                              progress: current.map { WordStack.progress(of: stream.words[$0], at: time) } ?? 0,
+                              size: model.wordSize, font: settings.screenLyricsFont, ink: ink,
+                              icons: settings.lyricWordIcons, maxWidth: model.maxWordWidth, lensed: LyricLens.isAvailable)
+                        .frame(width: band.width, height: band.height)
+                        .lyricLens(size: band)
+                }
+            }
+            .offset(y: model.centerOffset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
@@ -220,18 +229,7 @@ private struct StackWord: View {
         return Double(x % 2001) / 1000 - 1
     }
 
-    private var typeface: Font {
-        switch font {
-        // Verci's weights: semibold for the system faces, bold for the rest.
-        case .sfPro: .system(size: size, weight: .semibold)
-        case .sfRounded: .system(size: size, weight: .semibold, design: .rounded)
-        case .newYork: .system(size: size, weight: .semibold, design: .serif)
-        case .helveticaNeue: .custom("HelveticaNeue-Bold", size: size)
-        case .avenirNext: .custom("AvenirNext-Bold", size: size)
-        case .futura: .custom("Futura-Bold", size: size)
-        case .didot: .custom("Didot-Bold", size: size)
-        }
-    }
+    private var typeface: Font { ScreenLyricsTypeface.font(font, size: size) }
 
     /// A slightly crooked sticker of highlight color that fills from the left as the word is sung.
     private var box: some View {
@@ -304,20 +302,44 @@ struct StageLyrics: View {
             let band = CGSize(width: size.width, height: min(wordSize * 4.6, size.height))
             TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !store.isPlaying)) { context in
                 let time = store.lyricsPosition(at: context.date) + 0.08
-                let stream = store.wordStream
-                let current = stream.isResting(at: time) ? nil : stream.index(at: time)
-                WordStack(words: stream.words, current: current,
-                          progress: current.map { WordStack.progress(of: stream.words[$0], at: time) } ?? 0,
-                          size: wordSize, font: LiveTuning.shared.screenLyricsFont,
-                          ink: ScreenInk.current(palette: store.palette), icons: LiveTuning.shared.lyricWordIcons,
-                          maxWidth: size.width * 0.8, lensed: LyricLens.isAvailable)
-                    .frame(width: band.width, height: band.height)
-                    .lyricLens(size: band)
-                    .frame(width: size.width, height: size.height)
+                let live = LiveTuning.shared
+                let ink = ScreenInk.current(palette: store.palette)
+                Group {
+                    if live.screenLyricsStyle == .wall, case .synced(let lines) = store.lyrics {
+                        WallLyrics(lines: lines, time: time, size: (wordSize * 0.34).rounded(), font: live.screenLyricsFont,
+                                   ink: ink, icons: live.lyricWordIcons, maxWidth: size.width * 0.8)
+                    } else {
+                        let stream = store.wordStream
+                        let current = stream.isResting(at: time) ? nil : stream.index(at: time)
+                        WordStack(words: stream.words, current: current,
+                                  progress: current.map { WordStack.progress(of: stream.words[$0], at: time) } ?? 0,
+                                  size: wordSize, font: live.screenLyricsFont, ink: ink, icons: live.lyricWordIcons,
+                                  maxWidth: size.width * 0.8, lensed: LyricLens.isAvailable)
+                            .frame(width: band.width, height: band.height)
+                            .lyricLens(size: band)
+                    }
+                }
+                .frame(width: size.width, height: size.height)
             }
             .allowsHitTesting(false)
         } else {
             LyricsPanel(store: store)
+        }
+    }
+}
+
+/// The on-screen lyrics' typefaces at a size: Verci's weights, semibold for the system faces
+/// and bold for the rest.
+enum ScreenLyricsTypeface {
+    static func font(_ font: ScreenLyricsFont, size: CGFloat) -> Font {
+        switch font {
+        case .sfPro: .system(size: size, weight: .semibold)
+        case .sfRounded: .system(size: size, weight: .semibold, design: .rounded)
+        case .newYork: .system(size: size, weight: .semibold, design: .serif)
+        case .helveticaNeue: .custom("HelveticaNeue-Bold", size: size)
+        case .avenirNext: .custom("AvenirNext-Bold", size: size)
+        case .futura: .custom("Futura-Bold", size: size)
+        case .didot: .custom("Didot-Bold", size: size)
         }
     }
 }

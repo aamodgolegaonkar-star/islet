@@ -166,7 +166,7 @@ private struct WordScale: LayoutValueKey {
 /// Words left to right, wrapping like text. Lines break by the words' normal sizes, so a
 /// swelling word never moves another to the next line or changes the row's height; within
 /// a line, swollen words push their neighbours aside.
-private struct WordFlow: Layout {
+struct WordFlow: Layout {
     var spacing: CGFloat
     var lineSpacing: CGFloat
     /// Width kept free at the end of each line for words drawn larger than their size.

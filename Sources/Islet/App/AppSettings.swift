@@ -127,6 +127,40 @@ enum ScreenLyricsFont: String, CaseIterable, Identifiable {
     }
 }
 
+/// How the big on-screen lyrics move (after Verci's styles).
+enum ScreenLyricsStyle: String, CaseIterable, Identifiable {
+    /// A stack of single words seen through a glass lens.
+    case fisheye
+    /// The last few lines on a wall that drifts in 3D; words pop in as they're sung.
+    case wall
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fisheye: "Fisheye"
+        case .wall: "Wall"
+        }
+    }
+}
+
+/// Where the edge glow takes its colors from (after Lumn's rim).
+enum EdgeGlowColors: String, CaseIterable, Identifiable {
+    case album
+    case one
+    case two
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .album: "From the Album"
+        case .one: "One Color"
+        case .two: "Two Colors"
+        }
+    }
+}
+
 enum LevelPosition: String, CaseIterable, Identifiable {
     case island
     case leftEdge
@@ -257,6 +291,14 @@ final class AppSettings {
         static let screenLyricsAwake = "screenLyricsKeepAwake"
         static let edgeGlow = "edgeGlow"
         static let edgeGlowStrength = "edgeGlowStrength"
+        static let edgeGlowWidth = "edgeGlowWidth"
+        static let edgeGlowBeat = "edgeGlowBeat"
+        static let edgeGlowColors = "edgeGlowColors"
+        static let edgeGlowColor1 = "edgeGlowColor1"
+        static let edgeGlowColor2 = "edgeGlowColor2"
+        static let edgeGlowNotch = "edgeGlowNotch"
+        static let edgeGlowAllDisplays = "edgeGlowAllDisplays"
+        static let screenLyricsStyle = "screenLyricsStyle"
         static let shelfCopies = "shelfKeepsCopies"
         static let emulateNotch = AppSettings.emulateNotchKey
         static let levelPosition = "levelPosition"
@@ -385,7 +427,36 @@ final class AppSettings {
         didSet { save(edgeGlowStrength, Key.edgeGlowStrength) }
     }
 
+    /// How wide the glow reaches in from the edge (1 is the standard width).
+    var edgeGlowWidth: Double {
+        didSet { save(edgeGlowWidth, Key.edgeGlowWidth) }
+    }
+    /// The glow pulses with the music's beat (needs Audio Recording access, like the live waveform).
+    var edgeGlowBeat: Bool {
+        didSet { defaults.set(edgeGlowBeat, forKey: Key.edgeGlowBeat) }
+    }
+    var edgeGlowColors: EdgeGlowColors {
+        didSet { defaults.set(edgeGlowColors.rawValue, forKey: Key.edgeGlowColors) }
+    }
+    var edgeGlowColor1: RGB {
+        didSet { defaults.set(edgeGlowColor1.hex, forKey: Key.edgeGlowColor1) }
+    }
+    var edgeGlowColor2: RGB {
+        didSet { defaults.set(edgeGlowColor2.hex, forKey: Key.edgeGlowColor2) }
+    }
+    /// On a Mac with a notch, the glow runs around the notch instead of under it.
+    var edgeGlowNotch: Bool {
+        didSet { defaults.set(edgeGlowNotch, forKey: Key.edgeGlowNotch) }
+    }
+    var edgeGlowAllDisplays: Bool {
+        didSet { defaults.set(edgeGlowAllDisplays, forKey: Key.edgeGlowAllDisplays) }
+    }
+    var screenLyricsStyle: ScreenLyricsStyle {
+        didSet { defaults.set(screenLyricsStyle.rawValue, forKey: Key.screenLyricsStyle); LiveTuning.shared.screenLyricsStyle = screenLyricsStyle }
+    }
+
     static let edgeGlowStrengthRange: ClosedRange<Double> = 0.3...1
+    static let edgeGlowWidthRange: ClosedRange<Double> = 0.5...2
     static let screenLyricsSizeRange: ClosedRange<Double> = 0.5...1.5
     static let defaultScreenLyricsColors = (text: RGB(0.91, 0.58, 0.47), highlight: RGB(0.86, 0.38, 0.49),
                                             highlightText: RGB(1, 1, 1))
@@ -541,6 +612,12 @@ final class AppSettings {
             Key.screenLyricsAwake: true,
             Key.edgeGlow: true,
             Key.edgeGlowStrength: 0.8,
+            Key.edgeGlowWidth: 1.0,
+            Key.edgeGlowBeat: false,
+            Key.edgeGlowColors: EdgeGlowColors.album.rawValue,
+            Key.edgeGlowNotch: true,
+            Key.edgeGlowAllDisplays: false,
+            Key.screenLyricsStyle: ScreenLyricsStyle.fisheye.rawValue,
             Key.lowBattery: true,
             Key.levelPosition: LevelPosition.island.rawValue,
             Key.clipboard: true,
@@ -594,6 +671,14 @@ final class AppSettings {
         screenLyricsKeepAwake = defaults.bool(forKey: Key.screenLyricsAwake)
         edgeGlow = defaults.bool(forKey: Key.edgeGlow)
         edgeGlowStrength = Self.clamped(defaults.double(forKey: Key.edgeGlowStrength), Self.edgeGlowStrengthRange)
+        edgeGlowWidth = Self.clamped(defaults.double(forKey: Key.edgeGlowWidth), Self.edgeGlowWidthRange)
+        edgeGlowBeat = defaults.bool(forKey: Key.edgeGlowBeat)
+        edgeGlowColors = EdgeGlowColors(rawValue: defaults.string(forKey: Key.edgeGlowColors) ?? "") ?? .album
+        edgeGlowColor1 = defaults.string(forKey: Key.edgeGlowColor1).flatMap(RGB.init(hex:)) ?? RGB(0.98, 0.36, 0.6)
+        edgeGlowColor2 = defaults.string(forKey: Key.edgeGlowColor2).flatMap(RGB.init(hex:)) ?? RGB(0.36, 0.55, 1)
+        edgeGlowNotch = defaults.bool(forKey: Key.edgeGlowNotch)
+        edgeGlowAllDisplays = defaults.bool(forKey: Key.edgeGlowAllDisplays)
+        screenLyricsStyle = ScreenLyricsStyle(rawValue: defaults.string(forKey: Key.screenLyricsStyle) ?? "") ?? .fisheye
         shelfKeepsCopies = defaults.bool(forKey: Key.shelfCopies)
         emulateNotch = defaults.bool(forKey: Key.emulateNotch)
         levelPosition = LevelPosition(rawValue: defaults.string(forKey: Key.levelPosition) ?? "") ?? .island
@@ -638,6 +723,7 @@ final class AppSettings {
         live.lyricStyle = lyricStyle
         live.lyricWordIcons = lyricWordIcons
         live.screenLyricsFont = screenLyricsFont
+        live.screenLyricsStyle = screenLyricsStyle
         publishScreenLyricsColors()
         live.saverMode = batterySaver
         live.refreshBatterySaving()
@@ -727,6 +813,7 @@ final class LiveTuning {
     var lyricStyle = LyricStyle.wordByWord
     var lyricWordIcons = false
     var screenLyricsFont = ScreenLyricsFont.sfPro
+    var screenLyricsStyle = ScreenLyricsStyle.fisheye
     /// Text, highlight and highlighted-text colors the user picked; nil: from the album.
     var screenLyricsColors: [RGB]?
     var saverMode = BatterySaver.automatic

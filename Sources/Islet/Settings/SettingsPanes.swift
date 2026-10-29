@@ -176,6 +176,9 @@ extension SettingsView {
                 Picker("Where", selection: $settings.screenLyricsPlace) {
                     ForEach(ScreenLyricsPlace.allCases) { Text($0.title).tag($0) }
                 }
+                Picker("Style", selection: $settings.screenLyricsStyle) {
+                    ForEach(ScreenLyricsStyle.allCases) { Text($0.title).tag($0) }
+                }
                 Picker("Font", selection: $settings.screenLyricsFont) {
                     ForEach(ScreenLyricsFont.allCases) { Text($0.title).tag($0) }
                 }
@@ -194,7 +197,9 @@ extension SettingsView {
         } header: {
             Text("On Screen")
         } footer: {
-            Text("Big lyrics in the middle of the screen, a word at a time: the word being sung appears in a highlight box, then rolls up and grows as the next one comes. Shows while music with synced lyrics plays.")
+            Text(settings.screenLyricsStyle == .wall
+                 ? "Big lyrics while music with synced lyrics plays: the last few lines on a wall that drifts in 3D, each word popping in as it's sung. The full-screen player's Fisheye stage uses the same style."
+                 : "Big lyrics while music with synced lyrics plays, a word at a time through a glass lens: the word being sung appears in a highlight box, then rolls up and grows as the next one comes. The full-screen player's Fisheye stage uses the same style.")
         }
 
         Section {
@@ -202,11 +207,35 @@ extension SettingsView {
             if settings.edgeGlow {
                 sliderRow("Strength", value: $settings.edgeGlowStrength, in: AppSettings.edgeGlowStrengthRange,
                           low: "Subtle", high: "Bright", readout: "\(Int((settings.edgeGlowStrength * 100).rounded()))%")
+                sliderRow("Width", value: $settings.edgeGlowWidth, in: AppSettings.edgeGlowWidthRange,
+                          low: "Thin", high: "Wide", readout: "\(Int((settings.edgeGlowWidth * 100).rounded()))%")
+                Picker("Colors", selection: $settings.edgeGlowColors.animation(reveal)) {
+                    ForEach(EdgeGlowColors.allCases) { Text($0.title).tag($0) }
+                }
+                if settings.edgeGlowColors != .album {
+                    ColorPicker(settings.edgeGlowColors == .two ? "First color" : "Color",
+                                selection: color(\.edgeGlowColor1), supportsOpacity: false)
+                }
+                if settings.edgeGlowColors == .two {
+                    ColorPicker("Second color", selection: color(\.edgeGlowColor2), supportsOpacity: false)
+                }
+                Toggle("Pulse to the beat", isOn: $settings.edgeGlowBeat.animation(reveal))
+                if settings.edgeGlowBeat {
+                    AudioAccessRow()
+                }
+                if hasHardwareNotch {
+                    Toggle("Wrap around the notch", isOn: $settings.edgeGlowNotch)
+                }
+                if NSScreen.screens.count > 1 {
+                    Toggle("On every display", isOn: $settings.edgeGlowAllDisplays)
+                }
             }
         } header: {
             Text("Edge Glow")
         } footer: {
-            Text("A soft light around the edges of the screen in the colors of the album cover. It fades away when the music stops.")
+            Text(settings.edgeGlowBeat
+                 ? "A soft light around the edges of the screen that flares with the bass of the music. Following the beat needs Audio Recording access, like the live waveform; nothing is recorded or saved."
+                 : "A soft light around the edges of the screen in the colors of the album cover. It breathes while the music plays and fades away when it stops.")
         }
 
         Section {

@@ -158,7 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let wants = withObservationTracking {
             let bundle = store.hasTrack ? store.snapshot?.bundleIdentifier : nil
             let equalizer = settings.equalizerEnabled && ["com.apple.Music", "com.spotify.client"].contains(bundle ?? "")
-            let levels = settings.liveWaveform && store.isPlaying && WaveformLevels.shared.viewers > 0
+            // The bars, or the edge glow's beat, are watching.
+            let levels = (settings.liveWaveform || settings.edgeGlowBeat) && store.isPlaying
+                && WaveformLevels.shared.viewers > 0
             AudioTapEngine.shared.setEqualizer(bands: settings.equalizerBands, preamp: settings.equalizerPreamp)
             return AudioTapEngine.Wants(target: bundle, equalizer: equalizer, levels: levels)
         } onChange: {

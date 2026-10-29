@@ -67,6 +67,8 @@ extension Page {
         case .wordLyrics: ("Word-by-word lyrics", "quote.bubble.fill")
         case .screenLyrics: ("Lyrics on screen", "text.bubble.fill")
         case .edgeGlow: ("Edge glow", "light.max")
+        case .wallLyrics: ("Wall lyrics", "rectangle.stack.fill")
+        case .glowBeat: ("Glow to the beat", "waveform")
         case .activities: ("Live activities", "bolt.fill")
         case .lock: ("Lock screen", "lock.fill")
         case .agents: ("Coding agents", "terminal.fill")
@@ -167,6 +169,59 @@ struct EdgeGlowDemo: View {
                 try? await Task.sleep(for: .seconds(2.4))
                 index = (index + 1) % Self.albums.count
             }
+        }
+    }
+}
+
+/// Four lines on the Wall, sung on a loop, drawn by the real `WallLyrics`.
+struct WallLyricsDemo: View {
+    private static let lines: [LyricLine] = {
+        let lrc = "[00:00.30]The night is young\n[00:01.80]Turn the music up\n[00:03.30]Hearts on fire\n[00:04.80]Dancing till the sun\n[00:06.60]"
+        let parsed = LRCParser.parse(lrc, duration: 7)
+        return WordSymbols.system?.annotate(parsed) ?? parsed
+    }()
+    private static let ink = ScreenInk(text: Color(rgb: AppSettings.defaultScreenLyricsColors.text),
+                                       highlight: Color(rgb: AppSettings.defaultScreenLyricsColors.highlight),
+                                       highlightText: .white)
+    @State private var start = Date()
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+            let time = context.date.timeIntervalSince(start).truncatingRemainder(dividingBy: 7.5)
+            WallLyrics(lines: Self.lines, time: time, size: 30, font: .sfPro, ink: Self.ink,
+                       icons: true, maxWidth: 480)
+                .frame(width: 560, height: 230)
+                .padding(.bottom, 30)
+        }
+    }
+}
+
+/// A small screen with a notch whose edge glow flares on a steady beat.
+struct GlowBeatDemo: View {
+    private static let palette = Palette(colors: [RGB(0.5, 0.1, 0.4), RGB(0.1, 0.2, 0.6)], accent: RGB(0.98, 0.36, 0.6))
+    @State private var start = Date()
+
+    var body: some View {
+        let colors = Self.palette.glowColors.map { Color(rgb: $0) }
+        let ring = AngularGradient(colors: colors + colors.prefix(1), center: .center)
+        let rim = GlowRim(notch: CGSize(width: 70, height: 14), cornerRadius: 14)
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+            let beat = context.date.timeIntervalSince(start).truncatingRemainder(dividingBy: 0.5)
+            let flare = exp(-beat / 0.12)
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.black.opacity(0.55))
+                ZStack {
+                    rim.stroke(ring, lineWidth: 36).blur(radius: 14)
+                    rim.stroke(ring, lineWidth: 5).blur(radius: 2)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .opacity(0.55 + 0.45 * flare)
+                Image(systemName: "waveform")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .scaleEffect(1 + 0.12 * flare)
+            }
+            .frame(width: 360, height: 210)
         }
     }
 }

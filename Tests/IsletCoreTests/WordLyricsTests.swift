@@ -247,3 +247,43 @@ struct GlowColorTests {
         #expect(glow.allSatisfy { $0.hsb.s < 0.12 })
     }
 }
+
+@Suite("Beat detector")
+struct BeatDetectorTests {
+    /// A kick every `period` seconds: loud bass for two frames, quiet otherwise.
+    private func beats(period: Double, seconds: Double, quiet: Float = 0.2, loud: Float = 0.8) -> Int {
+        var detector = BeatDetector()
+        var count = 0
+        let frames = Int(seconds * 30)
+        let framesPerBeat = Int(period * 30)
+        for frame in 0..<frames {
+            let onBeat = frame % framesPerBeat < 2 && frame > 0
+            let level = onBeat ? loud : quiet
+            if detector.feed([level, level, level, 0.3, 0.3], at: Double(frame) / 30) { count += 1 }
+        }
+        return count
+    }
+
+    @Test func findsAKickAt120bpm() {
+        // 10 s at 2 beats a second; the first second primes the average.
+        let count = beats(period: 0.5, seconds: 10)
+        #expect(count >= 16 && count <= 20)
+    }
+
+    @Test func steadyLoudnessIsNotABeat() {
+        var detector = BeatDetector()
+        var count = 0
+        for frame in 0..<300 where detector.feed([0.7, 0.7, 0.7], at: Double(frame) / 30) { count += 1 }
+        #expect(count == 0)
+    }
+
+    @Test func silenceIsNotABeat() {
+        #expect(beats(period: 0.5, seconds: 5, quiet: 0.01, loud: 0.05) == 0)
+    }
+
+    @Test func neverFasterThanTheMinimumGap() {
+        // A "kick" every frame-pair is far too fast to be beats; at most one per 0.28 s.
+        let count = beats(period: 0.1, seconds: 6)
+        #expect(count <= Int(6 / 0.28) + 1)
+    }
+}

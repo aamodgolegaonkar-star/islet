@@ -100,8 +100,8 @@ final class ScreenLyricsController {
         withObservationTracking {
             _ = wanted
             _ = (settings.screenLyricsSize, settings.screenLyricsKeepAwake)
-        } onChange: {
-            Task { @MainActor [weak self] in
+        } onChange: { [weak self] in
+            Task { @MainActor in
                 self?.update()
                 self?.observe()
             }
