@@ -68,6 +68,8 @@ final class DebugTools: NSObject {
         case "island.arrive": island.model.arrivals += 1
         case "standby.start": StandbyController.shared?.start(manually: true)
         case "standby.stop": StandbyController.shared?.stop()
+        case "standby.status":
+            Log.media.notice("Standby: idle \(StandbyController.idleSeconds, format: .fixed(precision: 0)) s, power \(StandbyController.onPower), other app holds display \(StandbyController.otherAppKeepsDisplayAwake), system timeout \(StandbyController.systemTimeout.map { String(Int($0)) } ?? "never", privacy: .public)")
         case "island.volume": island.showLevel(LevelHUD(kind: .volume, value: 0.62))
         case "island.controls": island.debugSetPresentation(.controls)
         case "island.hover": island.model.isHovered = true

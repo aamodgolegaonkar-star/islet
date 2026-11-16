@@ -26,4 +26,17 @@ struct StandbyRuleTests {
         c.sinceDismissed = 400  // dismissed, then left alone for 301 s
         #expect(c.shouldStart)
     }
+
+    @Test func startsBeforeTheDisplayTurnsOff() {
+        var c = ready
+        c.idleSeconds = 100
+        c.systemTimeout = 120  // display off after 2 min: Standby at 100 s, not 5 min
+        #expect(c.waitSeconds == 100)
+        #expect(c.shouldStart)
+        c.systemTimeout = 10   // absurdly short: still waits 15 s
+        #expect(c.waitSeconds == 15)
+        c.systemTimeout = nil
+        #expect(c.waitSeconds == 300)
+        #expect(!c.shouldStart)
+    }
 }

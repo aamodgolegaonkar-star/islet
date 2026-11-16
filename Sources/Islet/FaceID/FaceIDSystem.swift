@@ -108,11 +108,13 @@ enum LockScreenState {
         CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown)
     }
 
-    /// Wakes the display and brings up the password field, as a key press would.
+    /// Wakes the display and brings up the password field, as a key press would. One
+    /// declaration, refreshed each time: a new ID per call was never released and piled up,
+    /// telling macOS someone was using the Mac long after they'd gone.
     static func declareActivity() {
-        var assertion: IOPMAssertionID = 0
-        IOPMAssertionDeclareUserActivity("Islet Face ID" as CFString, kIOPMUserActiveLocal, &assertion)
+        IOPMAssertionDeclareUserActivity("Islet Face ID" as CFString, kIOPMUserActiveLocal, &activity)
     }
+    nonisolated(unsafe) private static var activity: IOPMAssertionID = 0
 }
 
 /// Types into whatever has keyboard focus. Needs Accessibility access.

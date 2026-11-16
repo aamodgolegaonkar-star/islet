@@ -71,7 +71,8 @@ final class StandbyController {
             sinceDismissed: dismissedAt == .distantPast ? nil : Date().timeIntervalSince(dismissedAt),
             screenLocked: LockScreenController.screenIsLockedNow(),
             displayAsleep: CGDisplayIsAsleep(CGMainDisplayID()) != 0,
-            otherAppHoldsDisplay: Self.otherAppKeepsDisplayAwake)
+            otherAppHoldsDisplay: Self.otherAppKeepsDisplayAwake,
+            systemTimeout: Self.systemTimeout)
         guard conditions.shouldStart else { return }
         start(manually: false)
     }
@@ -188,12 +189,63 @@ final class StandbyController {
     static var onPower: Bool { Battery.current()?.isPluggedIn ?? true }
 
     /// A video or presentation is holding the display awake; Standby stays out of its way.
+    /// Not counted: Islet's own holds (lock-screen lyrics, Keep Awake) and the audio
+    /// service, which holds one for any sound playing, and music is exactly when Standby
+    /// is wanted.
     static var otherAppKeepsDisplayAwake: Bool {
-        var status: Unmanaged<CFDictionary>?
-        guard IOPMCopyAssertionsStatus(&status) == kIOReturnSuccess,
-              let counts = status?.takeRetainedValue() as? [String: Int] else { return false }
-        return (counts[kIOPMAssertionTypePreventUserIdleDisplaySleep] ?? 0) > 0
+        var byProcess: Unmanaged<CFDictionary>?
+        guard IOPMCopyAssertionsByProcess(&byProcess) == kIOReturnSuccess,
+              let processes = byProcess?.takeRetainedValue() as? [Int: [[String: Any]]] else { return false }
+        let me = Int(ProcessInfo.processInfo.processIdentifier)
+        return processes.contains { pid, assertions in
+            guard pid != me, !Self.isAudioService(pid) else { return false }
+            return assertions.contains {
+                ($0[kIOPMAssertionTypeKey] as? String) == kIOPMAssertionTypePreventUserIdleDisplaySleep
+                    && ($0[kIOPMAssertionLevelKey] as? Int ?? 0) == kIOPMAssertionLevelOn
+            }
+        }
     }
+
+    private static func isAudioService(_ pid: Int) -> Bool {
+        var name = [CChar](repeating: 0, count: 64)
+        return proc_name(Int32(pid), &name, 64) > 0 && String(cString: name) == "coreaudiod"
+    }
+
+    /// Seconds until macOS turns the display off on the charger or starts the screen saver
+    /// (whichever is sooner), or nil when neither will happen.
+    static var systemTimeout: TimeInterval? {
+        var timeouts: [TimeInterval] = []
+        if let minutes = displaySleepMinutes, minutes > 0 { timeouts.append(Double(minutes * 60)) }
+        if let seconds = CFPreferencesCopyValue("idleTime" as CFString, "com.apple.screensaver" as CFString,
+                                                kCFPreferencesCurrentUser, kCFPreferencesCurrentHost) as? Int, seconds > 0 {
+            timeouts.append(Double(seconds))
+        }
+        return timeouts.min()
+    }
+
+    /// The display-sleep setting for the power source in use (Standby only runs on the
+    /// charger, so that one). The API for it is private; `pmset -g` prints it, read at most
+    /// once a minute.
+    private static var displaySleepMinutes: Int? {
+        if let cached = displaySleepCache, Date().timeIntervalSince(cached.read) < 60 { return cached.minutes }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+        process.arguments = ["-g"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        let minutes = String(decoding: data, as: UTF8.self)
+            .split(separator: "\n")
+            .first { $0.trimmingCharacters(in: .whitespaces).hasPrefix("displaysleep") }
+            .flatMap { $0.split(separator: " ", omittingEmptySubsequences: true).dropFirst().first }
+            .flatMap { Int($0) }
+        displaySleepCache = (Date(), minutes)
+        return minutes
+    }
+    private static var displaySleepCache: (read: Date, minutes: Int?)?
 }
 
 /// Standby's window: it takes key presses (and swallows them without a beep), so the

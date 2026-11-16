@@ -296,6 +296,9 @@ extension SettingsView {
                 }
                 Toggle("Keep the display on", isOn: $settings.standbyKeepAwake)
             } footer: {
+                if let timeout = StandbyController.systemTimeout, timeout < Double(settings.standbyIdleMinutes * 60) {
+                    Text("Your Mac turns the display off or starts its screen saver after \(Self.duration(timeout)), so Standby starts a little before that, at \(Self.duration(max(timeout - 20, 15))).")
+                }
                 Text(settings.standbyKeepAwake ? "While Standby is up the display never sleeps, so your Mac won't lock itself. Turn this off if anyone else could reach it." : "The display sleeps on its usual schedule, which ends Standby, and your Mac locks as it normally would.")
             }
         }
@@ -306,6 +309,11 @@ extension SettingsView {
         } footer: {
             Text("You can also start it any time from the menu bar.")
         }
+    }
+
+    static func duration(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        return total % 60 == 0 ? "\(total / 60) min" : (total < 60 ? "\(total) s" : "\(total / 60) min \(total % 60) s")
     }
 
     // MARK: - Music
