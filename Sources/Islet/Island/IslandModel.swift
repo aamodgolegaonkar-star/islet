@@ -184,7 +184,8 @@ struct IslandMetrics: Equatable {
         -> (top: CGFloat, bottom: CGFloat) {
         let expanded = (presentation == .expanded && hasTrack && activity == nil) || activity?.isCard == true
             || ((presentation == .shelf || presentation == .controls) && activity == nil)
-        if hasNotch { return expanded ? (14, 38) : (6, 12) }
+        // Square top beside a real or emulated notch, so the island reads as the notch hanging from the bezel.
+        if hasNotch { return expanded ? (0, 38) : (0, 12) }
         return expanded ? (split ? 36 : 40, split ? 36 : 40) : (compactHeight / 2, compactHeight / 2)
     }
 

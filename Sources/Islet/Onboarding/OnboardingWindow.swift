@@ -420,8 +420,9 @@ private struct IslandDemo: View {
     }
 
     private var notchIsland: some View {
-        let shape = UnevenRoundedRectangle(topLeadingRadius: hovering ? 14 : 6, bottomLeadingRadius: hovering ? 38 : 12,
-                                           bottomTrailingRadius: hovering ? 38 : 12, topTrailingRadius: hovering ? 14 : 6,
+        // Square top, like the real island beside a notch.
+        let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: hovering ? 38 : 12,
+                                           bottomTrailingRadius: hovering ? 38 : 12, topTrailingRadius: 0,
                                            style: .continuous)
         return VStack(spacing: 0) {
             // A sliver of menu bar, so the island reads as hanging from the screen's top edge.

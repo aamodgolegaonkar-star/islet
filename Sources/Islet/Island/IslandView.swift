@@ -67,6 +67,13 @@ struct IslandView: View {
             .clipShape(shape)
             .modifier(IslandSurface(style: style, glass: glass, shape: shape, radii: radii, expanded: isExpanded,
                                     artwork: store.artwork, palette: store.palette))
+            // Hovered, as a notch: a faint light spills down from it, behind it.
+            .background(alignment: .top) {
+                EllipticalGradient(colors: [.white.opacity(0.16), .clear], center: .top)
+                    .frame(width: card.width * 1.5, height: card.height * 2.6)
+                    .opacity(hovered && metrics.hasNotch ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
             // Beside the island (outside its shape), so it never covers the content.
             .overlay(alignment: .topTrailing) { privacyDot(metrics) }
         }
