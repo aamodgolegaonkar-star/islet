@@ -156,7 +156,9 @@ struct IslandMetrics: Equatable {
     var headphoneCardWidth: CGFloat { max(expandedSize.width + 24, 400) }
 
     /// The locked pill: short without a notch; with one, the padlock needs the left wing.
-    var lockedWidth: CGFloat { hasNotch ? compactWidth : idleWidth }
+    /// Beside a notch the wings get extra room, so the padlock (and the red fingerprint) can
+    /// shake after a wrong attempt without sliding under the camera housing, which stays put.
+    var lockedWidth: CGFloat { hasNotch ? compactWidth + 28 : idleWidth }
     /// "Unlocked" needs a wide right wing beside a notch.
     var unlockedWidth: CGFloat { hasNotch ? chargingWidth : compactWidth }
 

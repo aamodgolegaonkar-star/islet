@@ -67,11 +67,19 @@ struct IslandView: View {
             .clipShape(shape)
             .modifier(IslandSurface(style: style, glass: glass, shape: shape, radii: radii, expanded: isExpanded,
                                     artwork: store.artwork, palette: store.palette))
-            // Hovered, as a notch: a faint light spills down from it, behind it.
-            .background(alignment: .top) {
-                EllipticalGradient(colors: [.white.opacity(0.16), .clear], center: .top)
-                    .frame(width: card.width * 1.5, height: card.height * 2.6)
-                    .opacity(hovered && metrics.hasNotch ? 1 : 0)
+            // Under the pointer, as a notch (closed or open): a soft light spills down from the
+            // island's edges. Masked out of the island itself, so it never shows through glass.
+            .background {
+                shape.fill(.white.opacity(0.3))
+                    .blur(radius: 16)
+                    .offset(y: 10)
+                    .mask {
+                        Rectangle().padding(-60)
+                            .overlay { shape.blendMode(.destinationOut) }
+                            .compositingGroup()
+                    }
+                    .opacity(model.isHovered && metrics.hasNotch && activity == nil ? 1 : 0)
+                    .animation(.easeOut(duration: 0.25), value: model.isHovered)
                     .allowsHitTesting(false)
             }
             // Beside the island (outside its shape), so it never covers the content.
