@@ -13,12 +13,16 @@ final class SettingsController {
     private let showTutorial: () -> Void
     private let sourceChanged: () -> Void
     private let updater: SPUUpdater
+    private let portal: PortalController
+    private let faceID: FaceIDController
     private var window: NSWindow?
     private var closeObserver: NSObjectProtocol?
 
     init(settings: AppSettings, sounds: LockSoundPlayer, islandChanged: @escaping () -> Void,
          previewIsland: @escaping (Bool) -> Void, showTutorial: @escaping () -> Void,
-         sourceChanged: @escaping () -> Void, updater: SPUUpdater) {
+         sourceChanged: @escaping () -> Void, updater: SPUUpdater, portal: PortalController, faceID: FaceIDController) {
+        self.portal = portal
+        self.faceID = faceID
         self.sourceChanged = sourceChanged
         self.updater = updater
         self.settings = settings
@@ -48,7 +52,7 @@ final class SettingsController {
         let view = SettingsView(
             settings: settings, sounds: sounds,
             islandChanged: islandChanged, previewIsland: previewIsland, sourceChanged: sourceChanged,
-            updater: updater,
+            updater: updater, portal: portal, faceID: faceID,
             showTutorial: { [weak self] in
                 self?.window?.close()
                 self?.showTutorial()
@@ -75,18 +79,22 @@ final class SettingsController {
 
 /// The sections of the Settings window, listed in its sidebar.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case island, activities, shelf, music, haptics, lockScreen, agents, general
+    case island, appearance, activities, shelf, portal, music, haptics, lockScreen, standby, faceID, agents, general
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .island: "Island"
+        case .appearance: "Appearance"
+        case .standby: "Standby"
         case .activities: "Live Activities"
         case .shelf: "File Shelf"
+        case .portal: "Portal"
         case .music: "Music & Lyrics"
         case .haptics: "Haptics"
         case .lockScreen: "Lock Screen"
+        case .faceID: "Face ID"
         case .agents: "Coding Agents"
         case .general: "General"
         }
@@ -95,27 +103,17 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .island: "capsule.fill"
+        case .appearance: "paintpalette.fill"
+        case .standby: "clock.fill"
         case .activities: "waveform"
         case .shelf: "tray.full.fill"
+        case .portal: "iphone.radiowaves.left.and.right"
         case .music: "music.note"
         case .haptics: "hand.tap.fill"
         case .lockScreen: "lock.fill"
+        case .faceID: "faceid"
         case .agents: "terminal.fill"
         case .general: "gearshape.fill"
-        }
-    }
-
-    /// The icon tile's color, in the manner of System Settings.
-    var tint: Color {
-        switch self {
-        case .island: .blue
-        case .activities: .orange
-        case .shelf: .teal
-        case .music: .pink
-        case .haptics: .purple
-        case .lockScreen: .indigo
-        case .agents: Color(white: 0.3)
-        case .general: .gray
         }
     }
 }
@@ -127,6 +125,8 @@ struct SettingsView: View {
     let previewIsland: (Bool) -> Void
     let sourceChanged: () -> Void
     let updater: SPUUpdater
+    let portal: PortalController
+    let faceID: FaceIDController
     let showTutorial: () -> Void
 
     @AppStorage("settingsPane") private var paneName = SettingsPane.island.rawValue
@@ -156,7 +156,7 @@ struct SettingsView: View {
                     Label {
                         Text(pane.title)
                     } icon: {
-                        PaneIcon(pane: pane)
+                        PaneIcon(pane: pane, selected: pane == self.pane, theme: settings.accentTheme)
                     }
                     .tag(pane)
                 }
@@ -168,13 +168,14 @@ struct SettingsView: View {
             ZStack {
                 detail(for: pane)
                     .id(pane)
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 8)),
-                                            removal: .opacity))
+                    .transition(.paneSwap)
             }
-            .animation(.spring(response: 0.32, dampingFraction: 0.86), value: pane)
+            .animation(IslandMotion.panel, value: pane)
             .navigationTitle(pane.title)
         }
         .frame(minWidth: 700, minHeight: 480)
+        .tint(settings.accentTheme.tint)
+        .animation(IslandMotion.panel, value: settings.accentTheme)
         .onChange(of: settings.islandStyle) { islandChanged() }
         .onChange(of: settings.islandWidthScale) { islandChanged() }
         .onChange(of: settings.islandHeightScale) { islandChanged() }
@@ -195,11 +196,15 @@ struct SettingsView: View {
         Form {
             switch pane {
             case .island: islandPane
+            case .appearance: appearancePane
+            case .standby: standbyPane
             case .activities: activitiesPane
             case .shelf: shelfPane
+            case .portal: portalPane
             case .music: musicPane
             case .haptics: hapticsPane
             case .lockScreen: lockPane
+            case .faceID: FaceIDPane(settings: settings, faceID: faceID)
             case .agents: agentsPane
             case .general: generalPane
             }
@@ -229,7 +234,7 @@ struct SettingsView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
-                    .animation(.snappy(duration: 0.2), value: readout)
+                    .animation(IslandMotion.quick, value: readout)
             }
         }
     }
@@ -273,15 +278,87 @@ struct SettingsView: View {
     }
 }
 
-/// A white symbol on a small colored rounded square, like the System Settings sidebar.
+/// A small rounded tile in the sidebar: a quiet grey glyph, and for the open page a tile
+/// filled with the theme's gradient that pops in with a little bounce.
 struct PaneIcon: View {
     let pane: SettingsPane
+    let selected: Bool
+    let theme: AccentTheme
 
     var body: some View {
         Image(systemName: pane.symbol)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
+            .symbolEffect(.bounce, value: selected)
             .frame(width: 20, height: 20)
-            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(pane.tint.gradient))
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(theme.gradient)
+                    .opacity(selected ? 1 : 0)
+                    .scaleEffect(selected ? 1 : 0.6)
+            }
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(.quaternary.opacity(0.6))
+            }
+            .animation(IslandMotion.playful, value: selected)
+            .animation(IslandMotion.panel, value: theme)
+    }
+}
+
+/// The Appearance page's header: the theme's colors drifting slowly behind its name.
+struct ThemeHero: View {
+    let theme: AccentTheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
+            ZStack {
+                ForEach(Array(theme.colors.enumerated()), id: \.offset) { index, color in
+                    let phase = t * 0.35 + Double(index) * 2.1
+                    Circle()
+                        .fill(color)
+                        .frame(width: 150, height: 150)
+                        .offset(x: cos(phase) * 90, y: sin(phase * 1.3) * 22)
+                        .blur(radius: 40)
+                }
+                VStack(spacing: 2) {
+                    Text(theme.title)
+                        .font(.system(size: 26, weight: .semibold, design: .rounded))
+                        .contentTransition(.interpolate)
+                    Text("Islet's colors")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.25), radius: 6, y: 1)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 110)
+            .background(.black.opacity(0.85))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .animation(IslandMotion.panel, value: theme)
+    }
+}
+
+extension AnyTransition {
+    /// A Settings page arriving comes into focus from a little below; the old one simply
+    /// fades, quicker, so the two never fight for attention.
+    static var paneSwap: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(active: PaneFocus(amount: 1), identity: PaneFocus(amount: 0)),
+            removal: .opacity.animation(IslandMotion.exit))
+    }
+}
+
+private struct PaneFocus: ViewModifier {
+    let amount: Double
+    func body(content: Content) -> some View {
+        content
+            .opacity(1 - amount)
+            .offset(y: IslandMotion.reduced ? 0 : amount * 10)
+            .blur(radius: IslandMotion.reduced ? 0 : amount * 4)
     }
 }

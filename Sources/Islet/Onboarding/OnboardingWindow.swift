@@ -98,7 +98,7 @@ final class OnboardingController {
 /// the full tutorial shows every page, and after updating, "What's New" shows the new ones.
 enum Page: Int, CaseIterable {
     case welcome, whatsNew
-    case island, feel, player, wordLyrics, screenLyrics, wallLyrics, edgeGlow, glowBeat, activities, levels, controls, sound, shelf, webPlayers, lock, lockWidgets, lockCustomize, agents
+    case island, swipeSkip, outOfTheWay, motion, colors, feel, player, wordLyrics, screenLyrics, wallLyrics, edgeGlow, glowBeat, activities, levels, controls, sound, shelf, portal, webPlayers, lock, lockWidgets, lockCustomize, standby, faceID, agents
     case done
 
     /// The full tutorial, in order.
@@ -123,6 +123,7 @@ enum Page: Int, CaseIterable {
         case .lockCustomize: "1.7.0"
         case .wordLyrics, .screenLyrics, .edgeGlow: "1.8.0"
         case .wallLyrics, .glowBeat: "1.9.0"
+        case .swipeSkip, .outOfTheWay, .portal, .faceID, .motion, .colors, .standby: "2.0"
         }
     }
 
@@ -131,6 +132,10 @@ enum Page: Int, CaseIterable {
         case .welcome: "Welcome to Islet"
         case .whatsNew: "What's New in Islet"
         case .island: "Your music lives in the island"
+        case .swipeSkip: "Swipe to skip"
+        case .outOfTheWay: "Out of the way when you want"
+        case .motion: "Smoother, everywhere"
+        case .colors: "Your colors"
         case .feel: "Controls you can feel"
         case .player: "A full-screen player"
         case .wordLyrics: "Lyrics, word by word"
@@ -143,10 +148,13 @@ enum Page: Int, CaseIterable {
         case .controls: "Pick where sound plays"
         case .sound: "Equalizer and live waveform"
         case .shelf: "A shelf for files and copies"
+        case .portal: "Portal to your iPhone"
         case .webPlayers: "Web players, by name"
         case .lock: "Made for the lock screen"
         case .lockWidgets: "Lock-screen widgets"
         case .lockCustomize: "Make the lock screen yours"
+        case .standby: "Standby"
+        case .faceID: "Face ID for your Mac"
         case .agents: "Your coding agents, in the island"
         case .done: "You're all set"
         }
@@ -157,6 +165,10 @@ enum Page: Int, CaseIterable {
         case .welcome: "A Dynamic Island for your Mac, in real Liquid Glass."
         case .whatsNew: "Here's what this update adds. It only takes a moment."
         case .island: "Hover over the island at the top of your screen to open it. Try this one."
+        case .swipeSkip: "Swipe two fingers over the island: left for the next song, right for the previous one."
+        case .outOfTheWay: "Islet can hide a paused song from the island, right away or after a while, and stay out of screenshots and screen sharing. Both are in Settings → Island."
+        case .motion: "Every animation in Islet was retuned to feel like one object. Swipe between desktops and the island rides along with the old one, then drops onto the new one. Reduce Motion in System Settings calms it all down."
+        case .colors: "Pick a color theme in Settings → Appearance. It tints switches and sliders, Portal, Standby and the sidebar. Portal can have its own colors too. Click a color here."
         case .feel: "Sliders click through detents like a dial on your trackpad. Drag this one."
         case .player: "Click the artwork in the island for the full-screen player, with synced lyrics. In Fisheye, click the cover and it tucks into the corner while the lyrics take the stage; click it again to bring it back."
         case .wordLyrics: "Each word lights up as it's sung. Fisheye swells the word being sung, and icons can rise over words like \"fire\" or \"night\". Pick a style in Music & Lyrics → Lyrics."
@@ -164,17 +176,20 @@ enum Page: Int, CaseIterable {
         case .edgeGlow: "While a song plays, a soft light runs around the edges of your screen in the colors of its cover. Make it wider, pick your own colors, or wrap it around the notch in Music & Lyrics → Edge Glow."
         case .wallLyrics: "A second look for the big lyrics: the last few lines on a wall drifting in 3D, each word popping in as it's sung. Pick Wall in Music & Lyrics → On Screen."
         case .glowBeat: "Turn on Pulse to the beat and the edge glow flares with the bass of whatever's playing."
-        case .activities: "Charging, headphones connecting, timers and low battery pop up in the island, and a dot shows when the mic or camera is on."
+        case .activities: "Charging, headphones connecting, timers and low battery pop up in the island, and a dot shows when the mic or camera is on. Pick how the charging battery looks and how long it stays in Live Activities → Charging."
         case .levels: "Islet replaces the macOS volume and brightness indicator. Show it in the island or as a slider on either edge of the screen (Live Activities → Position)."
         case .controls: "Click the speaker button in the open island to switch between speakers, AirPods, HomePod or paired headphones, and set AirPods noise control."
         case .sound: "Shape Apple Music and Spotify with a 10-band equalizer, and let the island's bars follow the real music. Turn them on in Music & Lyrics → Sound, then allow Islet once in Privacy & Security."
         case .shelf: "Drag files onto the island to keep them handy. The Clipboard tab keeps what you copied; click a card to copy it again."
+        case .portal: "Fling photos, videos, files and links between your iPhone and Mac through a portal, with no app to install. Turn it on in Settings → Portal, scan the code, and drag things to the right edge of your screen to send them back."
         case .webPlayers: "Playing in a browser? Islet names the service: YouTube Music, Deezer, Qobuz, Tidal, SoundCloud and more."
         case .lock: "Your music stays on the lock screen. A wrong finger shakes the padlock; the right one opens it."
         case .lockWidgets: "Small widgets sit under the clock: battery, what's playing, volume, your headphones and more, with motion artwork behind them."
         case .lockCustomize: "Drag widgets in, out and around in Settings → Lock Screen. New: Date, World Clock and CPU. Click a tile here to take it away."
+        case .standby: "Leave your Mac on its charger and walk away: after a few minutes the screen becomes a big clock with what's playing, the weather and the battery. Touch anything to come back. Settings → Standby, or Start Standby in the menu bar."
+        case .faceID: "Look at your Mac to unlock it: Islet types your password for you. The island shows the Face ID mark when it's your face, and the fingerprint when it's Touch ID. Strict liveness adds a quick colour flash that photos and videos can't fake. Set it up in Settings → Face ID; it's for convenience, not security."
         case .agents: "Claude Code and Codex tell you in the island when they need you or finish. Click to jump to the terminal."
-        case .done: "Everything can be tuned in Settings: island size, glass, sound, haptics and more."
+        case .done: "Everything can be tuned in Settings: island size, glass, colors, sound, haptics, Portal, Standby, Face ID and more."
         }
     }
 }
@@ -262,7 +277,7 @@ struct OnboardingView: View {
                         .onTapGesture { jump(to: item) }
                 }
             }
-            .animation(.spring(response: 0.4, dampingFraction: 0.75), value: page)
+            .animation(IslandMotion.subtle, value: page)
             Spacer()
             if index == pages.count - 1 {
                 HStack(spacing: 10) {
@@ -289,7 +304,7 @@ struct OnboardingView: View {
     private func jump(to next: Int) {
         guard next != index else { return }
         forward = next > index
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) { index = next }
+        withAnimation(IslandMotion.panel) { index = next }
     }
 }
 
@@ -322,7 +337,7 @@ private struct PageView: View {
         .foregroundStyle(.white)
         .padding(.top, 40)
         .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.78).delay(0.12)) { shown = true }
+            withAnimation(IslandMotion.panel.delay(0.12)) { shown = true }
         }
     }
 
@@ -332,6 +347,10 @@ private struct PageView: View {
         case .welcome: WelcomeHero()
         case .whatsNew: WhatsNewHero(pages: newPages)
         case .island: IslandDemo()
+        case .swipeSkip: SwipeSkipDemo()
+        case .outOfTheWay: OutOfTheWayDemo()
+        case .motion: MotionDemo()
+        case .colors: ColorsDemo()
         case .feel: FeelDemo()
         case .player: PlayerDemo()
         case .wordLyrics: WordLyricsDemo()
@@ -344,10 +363,13 @@ private struct PageView: View {
         case .controls: OutputDemo()
         case .sound: SoundDemo()
         case .shelf: ShelfDemo()
+        case .portal: PortalDemo()
         case .webPlayers: WebPlayerDemo()
         case .lock: LockDemo()
         case .lockWidgets: LockWidgetsDemo()
         case .lockCustomize: LockCustomizeDemo()
+        case .standby: StandbyDemo()
+        case .faceID: FaceIDDemo()
         case .agents: AgentDemo()
         case .done: DoneHero()
         }
@@ -389,7 +411,7 @@ private struct WelcomeHero: View {
             .task {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1.6))
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.68)) { open.toggle() }
+                    withAnimation(IslandMotion.playful) { open.toggle() }
                 }
             }
     }
@@ -461,7 +483,7 @@ private struct IslandDemo: View {
     }
 
     private func hover(_ inside: Bool) {
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) { hovering = inside }
+        withAnimation(IslandMotion.playful) { hovering = inside }
     }
 }
 
@@ -474,7 +496,7 @@ private struct FeelDemo: View {
             Image(systemName: "dial.medium")
                 .font(.system(size: 54, weight: .light))
                 .rotationEffect(.degrees(value * 300 - 150))
-                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: value)
+                .animation(IslandMotion.quick, value: value)
             GlassSlider(value: value, restHeight: 6, thumb: .always,
                         onChange: { value = $0 }, onCommit: { value = $0 })
                 .frame(width: 360)
@@ -502,7 +524,7 @@ private struct PlayerDemo: View {
                 }
             }
             .frame(width: 300, alignment: .leading)
-            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: line)
+            .animation(IslandMotion.panel, value: line)
         }
         .task {
             while !Task.isCancelled {

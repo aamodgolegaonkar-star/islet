@@ -42,6 +42,9 @@ struct ClearGlass: View, @preconcurrency Animatable {
     var bottomRadius: CGFloat
     /// Blur of what's behind, in points; 0 is perfectly clear.
     var frost: Double
+    /// Bend what this window drew beneath the glass instead of the screen behind the window.
+    /// The lock screen needs it: Islet paints the wallpaper itself there.
+    var inWindow = false
 
     nonisolated var animatableData: AnimatablePair<CGFloat, CGFloat> {
         get { AnimatablePair(topRadius, bottomRadius) }
@@ -49,7 +52,7 @@ struct ClearGlass: View, @preconcurrency Animatable {
     }
 
     var body: some View {
-        ClearGlassRepresentable(topRadius: topRadius, bottomRadius: bottomRadius, frost: frost)
+        ClearGlassRepresentable(topRadius: topRadius, bottomRadius: bottomRadius, frost: frost, inWindow: inWindow)
     }
 }
 
@@ -57,6 +60,7 @@ private struct ClearGlassRepresentable: NSViewRepresentable {
     let topRadius: CGFloat
     let bottomRadius: CGFloat
     let frost: Double
+    let inWindow: Bool
 
     func makeNSView(context: Context) -> ClearGlassView { ClearGlassView() }
 
@@ -64,6 +68,7 @@ private struct ClearGlassRepresentable: NSViewRepresentable {
         view.topRadius = topRadius
         view.bottomRadius = bottomRadius
         view.frost = frost
+        view.inWindow = inWindow
         view.refresh()
     }
 }
@@ -72,6 +77,7 @@ final class ClearGlassView: NSView {
     var topRadius: CGFloat = 0
     var bottomRadius: CGFloat = 0
     var frost: Double = 0
+    var inWindow = false
 
     private let backdrop: CALayer?
     private let sdf: CALayer?
@@ -168,6 +174,7 @@ final class ClearGlassView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         let rect = CGRect(origin: .zero, size: size)
+        backdrop.setValue(!inWindow, forKey: "windowServerAware")
         backdrop.frame = rect
         sdf.frame = rect
 

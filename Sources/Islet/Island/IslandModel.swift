@@ -32,11 +32,15 @@ enum IslandActivity: Equatable {
     case lowBattery(Int)
     /// A timer reached zero.
     case timerDone
+    /// Something came through Portal from an iPhone, or went to one.
+    case portal(PortalArrival)
+    /// Face ID looking for you on the lock screen.
+    case faceScan(FaceScanPhase)
 
     /// Activities shown as a card (expanded shape) rather than a pill.
     var isCard: Bool {
         switch self {
-        case .headphones, .agent: true
+        case .headphones, .agent, .portal: true
         default: false
         }
     }
@@ -47,7 +51,8 @@ enum IslandActivity: Equatable {
         case (.level(let a), .level(let b)?): a == b
         case (.charging, .charging?), (.unlocked, .unlocked?), (.locked, .locked?),
              (.lockFailed, .lockFailed?), (.headphones, .headphones?), (.agent, .agent?),
-             (.lowBattery, .lowBattery?), (.timerDone, .timerDone?): true
+             (.lowBattery, .lowBattery?), (.timerDone, .timerDone?), (.portal, .portal?),
+             (.faceScan, .faceScan?): true
         default: false
         }
     }
@@ -74,7 +79,7 @@ struct IslandMetrics: Equatable {
     var windowSize: CGSize
     /// Glass styles split the transport controls into their own glass capsule.
     var split = false
-    var controlsSize = CGSize(width: 204, height: 52)
+    var controlsSize = CGSize(width: 300, height: 52)
     var controlsGap: CGFloat = 12
 
     /// Every style splits the transport controls into a capsule floating below the card.
@@ -166,11 +171,12 @@ struct IslandMetrics: Equatable {
         switch activity {
         case .charging?: return CGSize(width: chargingWidth, height: compactHeight)
         case .unlocked?: return CGSize(width: unlockedWidth, height: compactHeight)
-        case .locked?, .lockFailed?: return CGSize(width: lockedWidth, height: compactHeight)
+        case .locked?, .lockFailed?, .faceScan?: return CGSize(width: lockedWidth, height: compactHeight)
         // Beside a notch the bar can't run through the middle: it drops below the notch.
         case .level?: return CGSize(width: chargingWidth, height: hasNotch ? compactHeight + 26 : compactHeight)
         case .headphones?: return CGSize(width: headphoneCardWidth, height: compactHeight + 76)
         case .agent?: return CGSize(width: headphoneCardWidth, height: compactHeight + 58)
+        case .portal?: return CGSize(width: headphoneCardWidth, height: compactHeight + 84)
         case .lowBattery?, .timerDone?: return CGSize(width: chargingWidth, height: compactHeight)
         case nil: break
         }
@@ -214,6 +220,12 @@ final class IslandModel {
     var isTucked = false
     /// The pointer is over the island (it lifts slightly when it won't open on hover).
     var isHovered = false
+    /// False once a paused song has been dropped from the island ("Hide the player when
+    /// music pauses"); it comes back when anything plays again.
+    var showsTrack = true
+    /// The last unlock was Face ID's, so the unlock animation shows the Face ID mark
+    /// instead of the fingerprint.
+    var unlockedWithFace = false
     /// Microphone / camera in use by some app: a coloured dot, like the iPhone's.
     var micActive = false
     var cameraActive = false
@@ -231,6 +243,8 @@ final class IslandModel {
     @ObservationIgnored var onLevelDrag: (LevelHUD.Kind, Double) -> Void = { _, _ in }
     /// Bumped for each failed unlock attempt; the island shakes once per bump.
     var shakes = 0
+    /// Bumped when the island lands on a newly active desktop; it drops in once per bump.
+    var arrivals = 0
     /// True while a slider in the island is being dragged; prevents collapsing.
     var isInteracting = false
     /// Hidden while the full-screen player covers the screen.

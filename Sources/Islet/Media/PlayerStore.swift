@@ -447,6 +447,7 @@ final class PlayerStore {
 
     private func present(_ event: AdapterEvent) {
         guard case let .update(incoming) = event else {
+            if snapshot != nil { Log.media.debug("Now Playing cleared (\(self.sourceName, privacy: .public))") }
             if snapshot != nil { snapshot = nil }
             lastTrackKey = nil
             return

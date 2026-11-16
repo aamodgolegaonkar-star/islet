@@ -15,7 +15,7 @@ struct EqualizerEditor: View {
                 .frame(maxWidth: 240)
                 Spacer()
                 Button("Reset") {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { settings.applyEqualizer(.flat) }
+                    withAnimation(IslandMotion.subtle) { settings.applyEqualizer(.flat) }
                 }
                 .disabled(settings.equalizerBands == Equalizer.flat && settings.equalizerPreamp == 0)
             }
@@ -39,7 +39,7 @@ struct EqualizerEditor: View {
         Binding(get: { settings.equalizerPreset },
                 set: { preset in
                     guard let preset else { return }
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { settings.applyEqualizer(preset) }
+                    withAnimation(IslandMotion.subtle) { settings.applyEqualizer(preset) }
                 })
     }
 

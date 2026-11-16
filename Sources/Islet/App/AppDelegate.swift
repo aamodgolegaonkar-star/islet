@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var player: FullPlayerController!
     private var lockScreen: LockScreenController!
     private var screenLyrics: ScreenLyricsController?
+    private var standby: StandbyController?
     private var edgeGlow: EdgeGlowController?
     private var statusMenu: StatusMenuController!
     private var debugTools: DebugTools?
@@ -20,6 +21,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: UpdateFeed.shared,
                                                userDriverDelegate: UpdateFeed.shared)
     private var signalSources: [DispatchSourceSignal] = []
+    private var captureObserver: NSObjectProtocol?
+    private var portal: PortalController!
+    private var faceID: FaceIDController!
+
+    /// "Hide from screen recordings": Islet's overlay panels (island, lyrics, glow, player)
+    /// opt out of screenshots, recordings and screen sharing. Each panel is set as it
+    /// appears, and all of them again whenever the setting changes.
+    private func followCaptureSetting() {
+        withObservationTracking { applyCaptureSetting() } onChange: {
+            Task { @MainActor [weak self] in self?.followCaptureSetting() }
+        }
+    }
+
+    private func applyCaptureSetting() {
+        let type: NSWindow.SharingType = settings.hideFromScreenCapture ? .none : .readOnly
+        for window in NSApp.windows where (window is NSPanel || window is FullPlayerWindow) && window.sharingType != type {
+            window.sharingType = type
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let settings = AppSettings()
@@ -63,8 +83,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edgeGlow.start()
         stopCleanlyOnSignals()
         island.show()
-        PowerMonitor.shared.onPluggedIn = { [weak island] battery in island?.showCharging(battery) }
-        lockScreen.onUnlock = { [weak island] in island?.showUnlocked() }
+        PowerMonitor.shared.onPluggedIn = { [weak island, weak settings] battery in
+            guard settings?.showChargingAlert == true else { return }
+            island?.showCharging(battery)
+        }
+        followCaptureSetting()
+        portal = PortalController(settings: settings, island: island)
+        portal.start()
+        debugTools?.portal = portal
+        debugTools?.faceID = faceID
+        captureObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            // A window just appeared or hid: catch new overlays as they show.
+            MainActor.assumeIsolated { self?.applyCaptureSetting() }
+        }
+        let standby = StandbyController(settings: settings, store: store)
+        StandbyController.shared = standby
+        self.standby = standby
+        standby.begin()
+        let faceID = FaceIDController(settings: settings, lockScreen: lockScreen)
+        self.faceID = faceID
+        faceID.start()
+        // Touch ID or the password: the fingerprint animation. Face ID: its own.
+        lockScreen.onUnlock = { [weak island, weak faceID] in island?.showUnlocked(face: faceID?.unlockedByFace ?? false) }
         // Off the launch path: get the lock-screen windows ready for the first lock.
         Task { @MainActor [weak lockScreen] in
             try? await Task.sleep(for: .seconds(3))
@@ -136,7 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let settings else { return }
                 store?.use(settings.playerSource)
             },
-            updater: updater.updater)
+            updater: updater.updater, portal: portal, faceID: faceID)
         statusMenu.openSettings = { [weak self] in self?.settingsWindow.show() }
         statusMenu.checkForUpdates = { [weak self] in self?.updater.checkForUpdates(nil) }
         statusMenu.whatsNew = { [weak self] in self?.onboarding.showLatest() }
@@ -145,6 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.cancelTimer = { [weak island] in island?.cancelTimer() }
         debugTools?.openSettings = { [weak self] in self?.settingsWindow.show() }
         debugTools?.openTutorial = { [weak self] in self?.onboarding.show() }
+        debugTools?.openWhatsNew = { [weak self] in self?.onboarding.showLatest() }
         if !settings.onboardingDone { onboarding.show() } else { onboarding.showWhatsNewIfUpdated() }
         PowerMonitor.shared.start()
         WaveformLevels.shared.onViewersChanged = { [weak self] in self?.updateAudioTap() }

@@ -45,3 +45,18 @@ Online services used at runtime (not bundled)
 
 macOS system sounds (the "macOS Padlock" lock sound option) are played in place
 from /System/Library and are not copied into or distributed with Islet.
+
+==============================================================================
+SFace face recognition model (face_recognition_sface_2021dec)
+https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface
+Converted to Core ML (half precision) and bundled as SFace.mlmodelc for Face ID.
+Licensed under the Apache License, Version 2.0:
+https://www.apache.org/licenses/LICENSE-2.0
+==============================================================================
+Silent-Face-Anti-Spoofing: MiniFASNetV2 (2.7_80x80) and MiniFASNetV1SE (4_0_0_80x80)
+https://github.com/minivision-ai/Silent-Face-Anti-Spoofing (commit b6d5f04ad78778917853b25c778acef6d5626d15)
+Copyright Minivision. Converted to Core ML (half precision, softmax added) and bundled
+as AntiSpoof27.mlmodelc and AntiSpoof40.mlmodelc for Face ID's liveness check.
+Licensed under the Apache License, Version 2.0:
+https://www.apache.org/licenses/LICENSE-2.0
+==============================================================================

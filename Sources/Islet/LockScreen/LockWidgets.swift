@@ -24,7 +24,7 @@ struct LockWidgetTile: View {
             if store.hasTrack {
                 NowPlayingMini(store: store, model: model)
                     .frame(width: widget.width, height: 66)
-                    .lockGlass(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .lockGlass(cornerRadius: 24)
             }
         case .volume:
             VolumeRing(level: store.volume).circleTile()
@@ -45,7 +45,7 @@ struct LockWidgetTile: View {
 private extension View {
     func circleTile() -> some View {
         frame(width: 66, height: 66)
-            .lockGlass(Circle())
+            .lockGlass(cornerRadius: 33)
             .transition(.scale.combined(with: .opacity))
     }
 }

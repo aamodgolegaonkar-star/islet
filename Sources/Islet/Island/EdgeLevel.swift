@@ -30,13 +30,13 @@ final class EdgeLevelHUD {
         model.hud = hud
         panel.orderFrontRegardless()
         if !model.visible {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) { model.visible = true }
+            withAnimation(IslandMotion.subtle) { model.visible = true }
         }
         hideTask?.cancel()
         hideTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(1.5))
             guard let self, !Task.isCancelled else { return }
-            withAnimation(.easeIn(duration: 0.22)) { self.model.visible = false }
+            withAnimation(IslandMotion.exit) { self.model.visible = false }
             try? await Task.sleep(for: .milliseconds(260))
             guard !Task.isCancelled else { return }
             self.panel?.orderOut(nil)
@@ -75,7 +75,7 @@ private struct EdgeLevelView: View {
                 }
             }
             .frame(width: 10)
-            .animation(.spring(response: 0.25, dampingFraction: 0.85), value: value)
+            .animation(IslandMotion.quick, value: value)
             Image(systemName: symbol(hud))
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)

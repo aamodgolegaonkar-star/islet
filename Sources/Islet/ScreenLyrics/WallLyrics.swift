@@ -40,7 +40,7 @@ struct WallLyrics: View {
                            startPoint: .top, endPoint: .bottom)
         }
         .clipped()
-        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: current)
+        .animation(IslandMotion.respecting(.spring(response: 0.25, dampingFraction: 0.7)), value: current)
         .rotation3DEffect(.degrees(sin(0.35 * t) * 16), axis: (x: 0, y: 1, z: 0), perspective: 0.45)
         .rotation3DEffect(.degrees(sin(0.22 * t) * 7), axis: (x: 1, y: 0, z: 0), perspective: 0.45)
         .scaleEffect(1 + sin(0.17 * t) * 0.035)
@@ -84,7 +84,7 @@ private struct WallLine: View {
                 }
             }
         }
-        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: line.words.filter { $0.start <= time }.count)
+        .animation(IslandMotion.respecting(.spring(response: 0.25, dampingFraction: 0.7)), value: line.words.filter { $0.start <= time }.count)
         .opacity(isCurrent ? 1 : max(0.2, 0.7 - Double(age - 1) * 0.15))
         .shadow(color: .black.opacity(0.45), radius: size * 0.1)
     }

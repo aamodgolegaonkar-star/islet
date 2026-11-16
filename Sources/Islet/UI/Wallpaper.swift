@@ -53,6 +53,11 @@ enum Wallpaper {
         return result
     }
 
+    /// Forgets the pieces cut so far (the lock screen calls this once it's gone).
+    static func releaseCrops() {
+        crops.removeAll()
+    }
+
     /// The picture as the Desktop shows it (aspect-filled and centred), at screen pixels.
     private static func screenImage(url: URL, screen: NSScreen, key: String) -> CGImage? {
         if let decoded, decoded.key == key { return decoded.image }

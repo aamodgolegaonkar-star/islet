@@ -20,7 +20,7 @@ struct WhatsNewHero: View {
         .task {
             for count in 1...max(pages.count, 1) {
                 try? await Task.sleep(for: .milliseconds(160))
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { shown = count }
+                withAnimation(IslandMotion.playful) { shown = count }
             }
         }
     }
@@ -62,6 +62,13 @@ extension Page {
         case .lockWidgets: ("Lock widgets", "cloud.sun.fill")
         case .lockCustomize: ("Your widgets", "square.grid.3x1.below.line.grid.1x2")
         case .island: ("Island", "capsule.fill")
+        case .swipeSkip: ("Swipe to skip", "hand.draw.fill")
+        case .outOfTheWay: ("Hide when paused", "eye.slash.fill")
+        case .motion: ("Smoother motion", "wind")
+        case .colors: ("Color themes", "paintpalette.fill")
+        case .standby: ("Standby", "clock.fill")
+        case .portal: ("Portal", "iphone.radiowaves.left.and.right")
+        case .faceID: ("Face ID", "faceid")
         case .feel: ("Haptics", "hand.tap.fill")
         case .player: ("Player", "music.note")
         case .wordLyrics: ("Word-by-word lyrics", "quote.bubble.fill")
@@ -266,7 +273,7 @@ struct ActivitiesDemo: View {
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1.6))
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) { step = (step + 1) % 4 }
+                withAnimation(IslandMotion.playful) { step = (step + 1) % 4 }
             }
         }
     }
@@ -318,10 +325,10 @@ struct LevelsDemo: View {
             while !Task.isCancelled {
                 for target in [0.7, 0.55, 0.85] {
                     try? await Task.sleep(for: .milliseconds(500))
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { level = target }
+                    withAnimation(IslandMotion.quick) { level = target }
                 }
                 try? await Task.sleep(for: .milliseconds(500))
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { edge.toggle() }
+                withAnimation(IslandMotion.subtle) { edge.toggle() }
             }
         }
     }
@@ -354,8 +361,8 @@ struct OutputDemo: View {
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1.4))
-                withAnimation(.snappy) { mode = (mode + 1) % modes.count }
-                if mode == 0 { withAnimation(.snappy) { chosen = (chosen + 1) % outputs.count == 0 ? 1 : 2 } }
+                withAnimation(IslandMotion.quick) { mode = (mode + 1) % modes.count }
+                if mode == 0 { withAnimation(IslandMotion.quick) { chosen = (chosen + 1) % outputs.count == 0 ? 1 : 2 } }
             }
         }
     }
@@ -396,7 +403,7 @@ struct SoundDemo: View {
                     }
                 }
             }
-            .animation(.spring(response: 0.5, dampingFraction: 0.75), value: preset)
+            .animation(IslandMotion.panel, value: preset)
             HStack(spacing: 6) {
                 ForEach(0..<4, id: \.self) { bar in
                     Capsule().fill(Color.orange.gradient).frame(width: 9, height: 12 + 60 * beat[bar])
@@ -455,7 +462,7 @@ struct ShelfDemo: View {
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { clipboard.toggle() }
+                withAnimation(IslandMotion.subtle) { clipboard.toggle() }
             }
         }
     }
@@ -507,7 +514,7 @@ struct WebPlayerDemo: View {
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1.3))
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { index = (index + 1) % services.count }
+                withAnimation(IslandMotion.subtle) { index = (index + 1) % services.count }
             }
         }
     }
@@ -539,7 +546,7 @@ struct LockWidgetsDemo: View {
             .scaleEffect(shown ? 1 : 0.6)
             .opacity(shown ? 1 : 0)
         }
-        .onAppear { withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.3)) { shown = true } }
+        .onAppear { withAnimation(IslandMotion.playful.delay(0.3)) { shown = true } }
     }
 
     private func circle(ring: Double? = nil, @ViewBuilder _ content: () -> some View) -> some View {
@@ -570,7 +577,7 @@ struct LockCustomizeDemo: View {
                 ForEach(tiles) { widget in
                     tile(widget)
                         .onTapGesture {
-                            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { tiles.removeAll { $0 == widget } }
+                            withAnimation(IslandMotion.subtle) { tiles.removeAll { $0 == widget } }
                         }
                         .transition(.scale.combined(with: .opacity))
                 }
@@ -586,7 +593,7 @@ struct LockCustomizeDemo: View {
     }
 
     private func step() {
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
+        withAnimation(IslandMotion.panel) {
             switch round % 4 {
             case 0: tiles.insert(.date, at: 0)
             case 1: if tiles.count > 2 { tiles.swapAt(1, 2) }
@@ -640,8 +647,372 @@ struct AgentDemo: View {
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1.8))
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { done.toggle() }
+                withAnimation(IslandMotion.subtle) { done.toggle() }
             }
         }
+    }
+}
+
+/// Two fingers slide over the island and the next song slides in.
+struct SwipeSkipDemo: View {
+    private static let songs: [(String, [Color])] = [
+        ("Your Song", [.pink, .orange]), ("Next Song", [.blue, .purple]), ("Another One", [.green, .teal]),
+    ]
+    @State private var index = 0
+    @State private var swiping = false
+
+    var body: some View {
+        VStack(spacing: 18) {
+            // The songs slide inside the pill, never past its edges.
+            ZStack {
+                HStack(spacing: 12) {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(LinearGradient(colors: Self.songs[index].1, startPoint: .top, endPoint: .bottom))
+                        .frame(width: 26, height: 26)
+                    Text(Self.songs[index].0).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                    Spacer(minLength: 0)
+                    Image(systemName: "waveform").foregroundStyle(Self.songs[index].1[0])
+                }
+                .padding(.horizontal, 10)
+                .id(index)
+                .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                        removal: .move(edge: .leading).combined(with: .opacity)))
+            }
+            .frame(width: 300, height: 42)
+            .background(.black)
+            .clipShape(.rect(cornerRadius: 19, style: .continuous))
+            Image(systemName: "hand.point.up.left.fill")
+                .font(.system(size: 30))
+                .foregroundStyle(.white.opacity(0.8))
+                .offset(x: swiping ? -70 : 70)
+                .opacity(swiping ? 0 : 1)
+        }
+        .scaleEffect(1.3)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.2))
+                withAnimation(.easeInOut(duration: 0.55)) { swiping = true }
+                try? await Task.sleep(for: .milliseconds(300))
+                withAnimation(IslandMotion.subtle) { index = (index + 1) % Self.songs.count }
+                try? await Task.sleep(for: .milliseconds(500))
+                swiping = false
+            }
+        }
+    }
+}
+
+/// A paused song tucks away to the resting island; then the island ducks out of a
+/// screen recording.
+struct OutOfTheWayDemo: View {
+    @State private var step = 0
+
+    var body: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(step == 2 ? Color.red.opacity(0.8) : .white.opacity(0.15),
+                                  style: StrokeStyle(lineWidth: 1.5, dash: step == 2 ? [6, 4] : []))
+                    .frame(width: 340, height: 120)
+                pill
+                    .opacity(step == 2 ? 0 : 1)
+                    .frame(maxHeight: 120, alignment: .top)
+                    .padding(.top, 10)
+            }
+            .frame(height: 120)
+            Label(caption.0, systemImage: caption.1)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.6))
+                .contentTransition(.opacity)
+        }
+        .scaleEffect(1.2)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.8))
+                withAnimation(IslandMotion.subtle) { step = (step + 1) % 3 }
+            }
+        }
+    }
+
+    private var pill: some View {
+        HStack(spacing: 10) {
+            if step == 0 {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(LinearGradient(colors: [.pink, .orange], startPoint: .top, endPoint: .bottom))
+                    .frame(width: 22, height: 22)
+                    .transition(.scale.combined(with: .opacity))
+                Spacer(minLength: 0)
+                Image(systemName: "pause.fill").font(.system(size: 12)).foregroundStyle(.white.opacity(0.7))
+                    .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 9)
+        .frame(width: step == 0 ? 210 : 110, height: 34)
+        .background(Capsule().fill(.black))
+    }
+
+    private var caption: (String, String) {
+        switch step {
+        case 0: ("Paused", "pause.circle")
+        case 1: ("The paused song tucks away", "eye.slash")
+        default: ("Hidden from screen sharing", "rectangle.dashed.badge.record")
+        }
+    }
+}
+
+/// A photo leaves a little iPhone through its portal and bursts out of the island's.
+struct PortalDemo: View {
+    @State private var step = 0
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 70) {
+            // The phone, with its portal.
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(.black)
+                .frame(width: 112, height: 210)
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.25), lineWidth: 1.5))
+                .overlay { PortalWell(effect: .vortex, energy: step == 1 ? 1 : 0.3).scaleEffect(1.1) }
+                .overlay(alignment: .bottom) {
+                    photo
+                        .scaleEffect(step == 0 ? 1 : 0.05)
+                        .rotationEffect(.degrees(step == 0 ? 0 : 540))
+                        .offset(y: step == 0 ? -26 : -105)
+                        .opacity(step == 0 ? 1 : 0)
+                }
+            // The island, with its portal.
+            VStack(spacing: 0) {
+                Rectangle().fill(.white.opacity(0.12)).frame(width: 300, height: 5)
+                HStack(spacing: 12) {
+                    ZStack {
+                        PortalWell(effect: .vortex, energy: step == 2 ? 1 : 0.3)
+                            .opacity(step == 0 ? 0 : 1)
+                            .scaleEffect(step == 0 ? 0.2 : 1)
+                        photo
+                            .scaleEffect(step == 2 ? 1 : 0.05)
+                            .rotationEffect(.degrees(step == 2 ? 0 : -540))
+                            .opacity(step == 2 ? 1 : 0)
+                    }
+                    .frame(width: 76, height: 76)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Photo").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                        Text("From iPhone").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                    }
+                    .opacity(step == 2 ? 1 : 0)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .frame(width: 260, height: 96)
+                .background(UnevenRoundedRectangle(bottomLeadingRadius: 34, bottomTrailingRadius: 34, style: .continuous).fill(.black))
+            }
+            .offset(y: -40)
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.1))
+                withAnimation(.easeIn(duration: 0.7)) { step = 1 }
+                try? await Task.sleep(for: .seconds(0.8))
+                withAnimation(IslandMotion.playful) { step = 2 }
+                try? await Task.sleep(for: .seconds(2.2))
+                withAnimation(IslandMotion.quick) { step = 0 }
+            }
+        }
+    }
+
+    private var photo: some View {
+        RoundedRectangle(cornerRadius: 9, style: .continuous)
+            .fill(LinearGradient(colors: [.pink, .orange, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .frame(width: 44, height: 44)
+            .overlay(alignment: .topTrailing) { Circle().fill(.white.opacity(0.85)).frame(width: 9).padding(7) }
+            .shadow(color: .cyan.opacity(0.6), radius: 8)
+    }
+}
+
+/// Two unlocks, one after the other: Face ID, then Touch ID, each with its own animation.
+struct FaceIDDemo: View {
+    @State private var face = true
+    @State private var phase = FaceScanPhase.scanning
+    @State private var cycle = 0
+
+    var body: some View {
+        VStack(spacing: 22) {
+            ZStack {
+                if face {
+                    FaceIDMark(phase: phase, size: 70)
+                        .transition(.scale(scale: 0.7).combined(with: .opacity))
+                } else {
+                    Image(systemName: "touchid")
+                        .font(.system(size: 64, weight: .light))
+                        .foregroundStyle(phase == .matched ? Color.green : .red)
+                        .symbolEffect(.bounce, value: phase)
+                        .transition(.scale(scale: 0.7).combined(with: .opacity))
+                }
+            }
+            .frame(width: 130, height: 130)
+            Group {
+                if face { FaceUnlockContent() } else { UnlockContent() }
+            }
+            .id(cycle)
+            .frame(width: 230, height: 36)
+            .background(Capsule().fill(.black))
+            Text(face ? "Face ID" : "Touch ID")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.55))
+        }
+        .task {
+            while !Task.isCancelled {
+                withAnimation(IslandMotion.playful) { phase = .scanning }
+                try? await Task.sleep(for: .seconds(1.2))
+                withAnimation(IslandMotion.playful) { phase = .matched }
+                try? await Task.sleep(for: .seconds(1.8))
+                withAnimation(IslandMotion.subtle) {
+                    face.toggle()
+                    cycle += 1
+                }
+            }
+        }
+    }
+}
+
+/// Two desktops slide past under a swipe; the island rides off on the first and drops
+/// onto the second with a little bounce.
+struct MotionDemo: View {
+    @State private var onSecond = false
+    @State private var arrivals = 0
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            HStack(spacing: 18) {
+                desktop(tint: Color(red: 0.25, green: 0.3, blue: 0.55), label: "Desktop 1", island: !onSecond)
+                desktop(tint: Color(red: 0.5, green: 0.3, blue: 0.45), label: "Desktop 2", island: onSecond)
+            }
+            .offset(x: onSecond ? -169 : 169)
+        }
+        .frame(width: 340, height: 200)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.15)))
+        .overlay(alignment: .bottom) {
+            Image(systemName: "hand.draw.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(.white.opacity(0.75))
+                .offset(x: onSecond ? -60 : 60, y: -14)
+        }
+        .scaleEffect(1.25)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.8))
+                withAnimation(IslandMotion.panel) { onSecond.toggle() }
+                try? await Task.sleep(for: .milliseconds(420))
+                arrivals += 1
+            }
+        }
+    }
+
+    private func desktop(tint: Color, label: String, island: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(LinearGradient(colors: [tint, tint.opacity(0.5)], startPoint: .top, endPoint: .bottom))
+            .frame(width: 320, height: 190)
+            .overlay(alignment: .top) {
+                Capsule().fill(.black)
+                    .frame(width: 96, height: 24)
+                    .padding(.top, 6)
+                    .opacity(island ? 1 : 0)
+                    .islandArrival(arrivals)
+            }
+            .overlay(alignment: .bottomLeading) {
+                Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.6)).padding(10)
+            }
+    }
+}
+
+/// The theme picker, live: click a color and the switch, slider, Portal and clock follow.
+struct ColorsDemo: View {
+    @State private var theme = AccentTheme.aurora
+    @State private var on = true
+    @State private var auto = true
+
+    var body: some View {
+        VStack(spacing: 22) {
+            HStack(spacing: 26) {
+                Text("9:41")
+                    .font(.system(size: 54, weight: .semibold, design: .rounded))
+                    .foregroundStyle(theme.gradient)
+                PortalWell(effect: .vortex, energy: 0.6)
+                    .frame(width: 80, height: 80)
+                    .environment(\.portalTheme, theme)
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("", isOn: $on).toggleStyle(.switch).labelsHidden()
+                    Capsule().fill(.white.opacity(0.15)).frame(width: 110, height: 5)
+                        .overlay(alignment: .leading) { Capsule().fill(theme.tint).frame(width: 70, height: 5) }
+                }
+            }
+            ThemePicker(selection: Binding(get: { theme }, set: { theme = $0; auto = false }))
+        }
+        .tint(theme.tint)
+        .animation(IslandMotion.panel, value: theme)
+        .scaleEffect(1.15)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.6))
+                guard auto else { continue }
+                let all = AccentTheme.allCases
+                withAnimation(IslandMotion.playful) { theme = all[(all.firstIndex(of: theme)! + 1) % all.count] }
+            }
+        }
+    }
+}
+
+/// A Mac on its charger fades from the desktop into Standby, then wakes again.
+struct StandbyDemo: View {
+    @State private var standby = false
+
+    var body: some View {
+        let theme = AccentTheme.aurora
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(LinearGradient(colors: [Color(red: 0.25, green: 0.3, blue: 0.5), Color(red: 0.4, green: 0.3, blue: 0.45)],
+                                     startPoint: .top, endPoint: .bottom))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6).fill(.white.opacity(0.18)).frame(width: 150, height: 90).offset(x: -40, y: 6)
+                }
+            ZStack {
+                Color.black
+                RadialGradient(colors: [theme.colors[0].opacity(0.35), .clear], center: .topLeading, startRadius: 0, endRadius: 220)
+                RadialGradient(colors: [theme.colors[2].opacity(0.25), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 220)
+                HStack(spacing: 22) {
+                    Text("10:09")
+                        .font(.system(size: 64, weight: .semibold, design: .rounded))
+                        .foregroundStyle(theme.gradient)
+                        .offset(y: standby ? 0 : 14)
+                        .blur(radius: standby ? 0 : 6)
+                    VStack(spacing: 10) {
+                        tile { Image(systemName: "music.note").foregroundStyle(theme.colors[2]) }
+                            .offset(y: standby ? 0 : 18)
+                        tile { Image(systemName: "bolt.fill").foregroundStyle(theme.colors[1]) }
+                            .offset(y: standby ? 0 : 24)
+                    }
+                }
+            }
+            .opacity(standby ? 1 : 0)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .frame(width: 340, height: 210)
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.18)))
+        .overlay(alignment: .bottomTrailing) {
+            Image(systemName: "powerplug.fill").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6)).padding(10)
+        }
+        .scaleEffect(1.2)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.6))
+                withAnimation(standby ? IslandMotion.exit : IslandMotion.playful) { standby.toggle() }
+                try? await Task.sleep(for: .seconds(standby ? 1.6 : 0))
+            }
+        }
+    }
+
+    private func tile<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .font(.system(size: 18, weight: .semibold))
+            .frame(width: 54, height: 44)
+            .background(.white.opacity(0.08), in: .rect(cornerRadius: 12, style: .continuous))
     }
 }

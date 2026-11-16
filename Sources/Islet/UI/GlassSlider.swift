@@ -469,8 +469,8 @@ private struct GlassIconBody: View {
             }
             .modifier(IconGlass(look: look, active: active))
             .scaleEffect(configuration.isPressed ? 0.84 : (hovering ? 1.05 : 1))
-            .animation(.spring(response: 0.26, dampingFraction: 0.58), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.16), value: hovering)
+            .animation(IslandMotion.quick, value: configuration.isPressed)
+            .animation(IslandMotion.quick, value: hovering)
             .onHover { hovering = $0 }
     }
 }

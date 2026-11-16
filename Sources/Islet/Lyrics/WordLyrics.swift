@@ -108,7 +108,7 @@ private struct SungWord: View {
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(.white.opacity(lit > 0 ? 1 : 0.38))
                         .scaleEffect(lit > 0 ? 1 : 0.75)
-                        .animation(.spring(response: 0.38, dampingFraction: 0.62), value: lit > 0)
+                        .animation(IslandMotion.respecting(.spring(response: 0.38, dampingFraction: 0.62)), value: lit > 0)
                     lettering(lit)
                 }
             } else {
@@ -125,7 +125,7 @@ private struct SungWord: View {
                         .offset(y: -fontSize * 0.72)
                         .scaleEffect(shown ? 1 : 0.4, anchor: .bottom)
                         .opacity(shown ? 1 : 0)
-                        .animation(.spring(response: 0.38, dampingFraction: 0.62), value: shown)
+                        .animation(IslandMotion.respecting(.spring(response: 0.38, dampingFraction: 0.62)), value: shown)
                 }
             }
             .offset(y: -fontSize * 0.035 * lit * (progress == nil ? 0 : 1))

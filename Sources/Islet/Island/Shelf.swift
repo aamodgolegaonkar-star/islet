@@ -103,6 +103,7 @@ struct ShelfView: View {
     @State private var targeted = false
     @State private var shareAnchor = ShareAnchor.Holder()
     @State private var tab = Tab.files
+    @Namespace private var tabs
     private var clipboard: ClipboardHistory { .shared }
     private enum Tab { case files, clipboard }
     /// Dragging files in always shows the files.
@@ -145,6 +146,13 @@ struct ShelfView: View {
                         }
                     }
                 }
+                // Tiles past the edge fade out instead of being sliced, hinting there's more.
+                .mask {
+                    HStack(spacing: 0) {
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 28)
+                    }
+                }
             }
         }
         .padding(.top, (notchHeight ?? 0) + 12)
@@ -155,22 +163,34 @@ struct ShelfView: View {
             load(providers)
             return true
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: targeted)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: shelf.items)
+        .animation(IslandMotion.quick, value: targeted)
+        .animation(IslandMotion.subtle, value: shelf.items)
         .onAppear { shelf.pruneMissing() }
     }
 
+    /// The open tab shows its name; the other is just its icon, so the header never has
+    /// to cut a word short. The highlight slides between them.
     private func tabButton(_ title: String, symbol: String, tab: Tab) -> some View {
         let selected = self.tab == tab
-        let select = { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { self.tab = tab } }
+        let select = { withAnimation(IslandMotion.playful) { self.tab = tab } }
         return RoutedButton("shelf.tab.\(title)", action: select) {
-            Label(title, systemImage: symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(selected ? 1 : 0.55))
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(Capsule().fill(.white.opacity(selected ? 0.16 : 0)))
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                if selected {
+                    Text(title).fixedSize().transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .leading)))
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white.opacity(selected ? 1 : 0.55))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background {
+                if selected {
+                    Capsule().fill(.white.opacity(0.16)).matchedGeometryEffect(id: "shelf.tab", in: tabs)
+                }
+            }
         }
+        .help(title)
     }
 
     private var dropZone: some View {

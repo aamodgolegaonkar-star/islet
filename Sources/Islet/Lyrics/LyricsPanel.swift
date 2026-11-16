@@ -128,7 +128,7 @@ struct LyricsStage: View, Equatable {
                         // Battery saver: one short ease instead of a staggered cascade of springs.
                         .animation(LiveTuning.shared.batterySaving
                                    ? .easeOut(duration: 0.25)
-                                   : .spring(response: 0.62, dampingFraction: 0.84)
+                                   : IslandMotion.respecting(.spring(response: 0.62, dampingFraction: 0.84))
                                        .delay(distance > 0 ? min(Double(distance) * 0.045, 0.4) : 0),
                                    value: active)
                         .onTapGesture {
@@ -167,7 +167,7 @@ struct LyricsStage: View, Equatable {
         resumeTask = Task { @MainActor in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.86)) {
+            withAnimation(IslandMotion.respecting(.spring(response: 0.7, dampingFraction: 0.86))) {
                 userOffset = 0
                 frozenAnchor = nil
             }
@@ -208,7 +208,7 @@ struct LyricRow: View {
         .modifier(LyricHoverSurface(active: hovering && !line.isInterlude))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: hovering)
+        .animation(IslandMotion.quick, value: hovering)
     }
 
     private var rowOpacity: Double {
@@ -345,7 +345,7 @@ struct LiveLyricLine: View {
             .id("\(line?.id ?? -1) \(text)")
             .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
                                     removal: .move(edge: .top).combined(with: .opacity)))
-            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: line)
+            .animation(IslandMotion.respecting(.spring(response: 0.4, dampingFraction: 0.85)), value: line)
             // Room above for a swelling word, then clip the line change's slide.
             .padding(.top, 4)
             .clipped()

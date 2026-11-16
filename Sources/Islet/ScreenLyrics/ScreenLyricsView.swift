@@ -143,7 +143,7 @@ struct WordStack: View {
             }
         }
         // Verci's spring: quick, with a little overshoot.
-        .animation(.spring(response: 0.3, dampingFraction: 0.72), value: current)
+        .animation(IslandMotion.respecting(.spring(response: 0.3, dampingFraction: 0.72)), value: current)
     }
 }
 
@@ -261,7 +261,7 @@ private struct SymbolPop: View {
             .rotationEffect(.degrees(shown ? 0 : -14))
             .opacity(shown ? 1 : 0)
             .onAppear {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.45)) { shown = true }
+                withAnimation(IslandMotion.respecting(.spring(response: 0.3, dampingFraction: 0.45))) { shown = true }
             }
     }
 }

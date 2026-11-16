@@ -1,3 +1,4 @@
+import IsletCore
 import AppKit
 import SwiftUI
 
@@ -77,6 +78,8 @@ final class IslandController {
     private var hoverCheck: Timer?
     private var router: ClickRouter?
     private var screenObserver: NSObjectProtocol?
+    private var spaceObserver: NSObjectProtocol?
+    private var isShown = false
 
     init(store: PlayerStore, settings: AppSettings) {
         self.store = store
@@ -98,6 +101,14 @@ final class IslandController {
         model.onShelfDrop = { [weak self] in self?.fileDragActive = false }
         model.requestExpand = { [weak self] in self?.setPresentation(.expanded) }
         model.interactionEnded = { [weak self] in self?.mouseMoved() }
+        // One Space at a time (not every Space at once), so a three-finger swipe carries the
+        // island off with the old desktop; `followSpace` then brings it to the new one.
+        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .ignoresCycle]
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.followSpace() }
+        }
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -112,9 +123,58 @@ final class IslandController {
     }
 
     func show() {
+        isShown = true
         reposition()
         panel.orderFrontRegardless()
         installMonitors()
+        followPauses()
+    }
+
+    /// The swipe has finished on another desktop (or full-screen app): ordering the panel
+    /// in again puts it on the active Space, where it drops in from the notch.
+    private func followSpace() {
+        guard isShown, !panel.isOnActiveSpace else { return }
+        panel.orderOut(nil)
+        panel.orderFrontRegardless()
+        model.arrivals += 1
+    }
+
+    /// A song to show: the player's, unless a paused one has been dropped from the island.
+    private var hasTrack: Bool { store.hasTrack && model.showsTrack }
+
+    // MARK: - Hide the player when music pauses
+
+    private var pauseHideTask: Task<Void, Never>?
+
+    /// Drops a paused song from the island after the chosen delay, so it rests as if
+    /// nothing were playing; anything playing again brings it straight back. Re-runs
+    /// whenever what it read changes.
+    private func followPauses() {
+        let (paused, delay) = withObservationTracking {
+            (store.hasTrack && !store.isPlaying, settings.hidePausedPlayer)
+        } onChange: {
+            Task { @MainActor [weak self] in self?.followPauses() }
+        }
+        guard paused, delay != .never else {
+            pauseHideTask?.cancel()
+            pauseHideTask = nil
+            if !model.showsTrack { withAnimation(IslandMotion.open) { model.showsTrack = true } }
+            return
+        }
+        // Already counting down (playback reports keep arriving while paused) or gone.
+        guard model.showsTrack, pauseHideTask == nil else { return }
+        pauseHideTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay.rawValue))
+            // Never snatched away while it's open, under the pointer, or behind the full-screen
+            // player (whose closing animation lands on the island's artwork).
+            while let self, !Task.isCancelled,
+                  self.model.presentation != .compact || self.model.isHovered || self.model.isSuppressed {
+                try? await Task.sleep(for: .seconds(1))
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.pauseHideTask = nil
+            withAnimation(IslandMotion.close) { self.model.showsTrack = false }
+        }
     }
 
     /// Screen rectangle of the island's artwork, for the full-player hero animation.
@@ -122,7 +182,7 @@ final class IslandController {
     /// which is exactly where the closing hero should land.
     func artScreenRect() -> CGRect? {
         let frame = model.artFrame
-        guard frame.width > 1, store.hasTrack else { return nil }
+        guard frame.width > 1, hasTrack else { return nil }
         return CGRect(x: panel.frame.minX + frame.minX, y: panel.frame.maxY - frame.maxY,
                       width: frame.width, height: frame.height)
     }
@@ -229,7 +289,7 @@ final class IslandController {
     }
 
     private func islandScreenRect() -> CGRect {
-        let busy = store.hasTrack || model.timerEnd != nil
+        let busy = hasTrack || model.timerEnd != nil
         let local = model.metrics.islandRect(for: model.presentation, hasTrack: busy, activity: model.activity)
         return CGRect(x: panel.frame.minX + local.minX, y: panel.frame.maxY - local.maxY,
                       width: local.width, height: local.height)
@@ -270,20 +330,27 @@ final class IslandController {
 
     // MARK: - Swipe up to tuck away
 
-    private var swipeTravel: CGFloat = 0
     private var tuckedAt: TimeInterval = 0
     private var untuckTask: Task<Void, Never>?
 
-    /// Two fingers up over the island (in the direction they move, whatever the scrolling
-    /// setting) tucks it away.
+    private var swipe = TwoFingerSwipe()
+
+    /// Two fingers over the island (in the direction they move, whatever the scrolling
+    /// setting): up tucks it away; left or right ("Swipe to skip") plays the next or previous song.
     private func scrolled(_ event: NSEvent) {
         guard event.hasPreciseScrollingDeltas, !model.isTucked else { return }
-        if event.phase == .began { swipeTravel = 0 }
-        let fingersUp = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
-        swipeTravel += fingersUp
-        if swipeTravel > 28 {
-            swipeTravel = 0
-            tuck()
+        if event.phase == .began { swipe.begin() }
+        let inverted = event.isDirectionInvertedFromDevice
+        // Only the fingers themselves (not the coasting after), and not over the shelf or
+        // Control Center, whose own contents may scroll sideways.
+        let canSkip = event.momentumPhase.isEmpty && settings.swipeToSkip && hasTrack && !pressOnIsland
+            && (model.presentation == .compact || model.presentation == .expanded)
+        switch swipe.move(up: inverted ? -event.scrollingDeltaY : event.scrollingDeltaY,
+                          right: inverted ? event.scrollingDeltaX : -event.scrollingDeltaX, canSkip: canSkip) {
+        case .tuck?: tuck()
+        case .next?: store.next(); Haptics.tap()
+        case .previous?: store.previous(); Haptics.tap()
+        case nil: break
         }
     }
 
@@ -352,13 +419,13 @@ final class IslandController {
         setClickThrough(!hot)
         setHoverCheck(hot || model.presentation != .compact)
         if hot {
-            if model.presentation == .compact, settings.expandOnHover, store.hasTrack {
+            if model.presentation == .compact, settings.expandOnHover, hasTrack {
                 schedule(.expanded, after: .milliseconds(60))
             } else if model.presentation == .compact, settings.expandOnHover, settings.shelfEnabled,
                       !model.shelf.items.isEmpty {
                 // Nothing playing: hovering opens the shelf if it holds files.
                 schedule(.shelf, after: .milliseconds(60))
-            } else if model.presentation == .compact, settings.expandOnHover, !store.hasTrack,
+            } else if model.presentation == .compact, settings.expandOnHover, !hasTrack,
                       model.timerEnd == nil, model.activity == nil {
                 // Nothing playing and nothing on the shelf: Control Center.
                 schedule(.controls, after: .milliseconds(60))
@@ -394,7 +461,7 @@ final class IslandController {
     private func setPresentation(_ presentation: IslandPresentation) {
         cancelPending()
         guard model.presentation != presentation else { return }
-        if presentation == .expanded, !store.hasTrack { return }
+        if presentation == .expanded, !hasTrack { return }
         // Opening (music or shelf) takes over from a transient activity.
         if presentation != .compact {
             clearActivity()
@@ -406,9 +473,14 @@ final class IslandController {
 
     private var activityTask: Task<Void, Never>?
 
+    /// Something went through Portal.
+    func showPortal(_ arrival: PortalArrival) {
+        show(.portal(arrival), for: .seconds(4.5))
+    }
+
     /// Shows the charging animation for a few seconds, like the iPhone when plugged in.
     func showCharging(_ battery: BatteryState) {
-        show(.charging(battery), for: .seconds(3.5))
+        show(.charging(battery), for: .seconds(settings.chargingAlertDuration))
     }
 
     /// Volume or brightness level, kept up while the keys are pressed.
@@ -475,7 +547,8 @@ final class IslandController {
     }
 
     /// The Touch ID → open padlock moment, right after the Mac unlocks.
-    func showUnlocked() {
+    func showUnlocked(face: Bool = false) {
+        model.unlockedWithFace = face
         show(.unlocked, for: .seconds(2))
     }
 

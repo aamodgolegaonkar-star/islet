@@ -27,6 +27,11 @@ final class DebugTools: NSObject {
     /// Set by the app delegate for the settings/tutorial commands.
     var openSettings: () -> Void = {}
     var openTutorial: () -> Void = {}
+    var openWhatsNew: () -> Void = {}
+
+    /// Set once Portal and Face ID exist (they start after the debug tools).
+    var portal: PortalController?
+    var faceID: FaceIDController?
 
     init(island: IslandController, player: FullPlayerController, lockScreen: LockScreenController, settings: AppSettings) {
         self.island = island
@@ -52,6 +57,7 @@ final class DebugTools: NSObject {
         switch command {
         case "capture": captureAll()
         case "island.film": filmIslandExpand()
+        case let filmed where filmed.hasPrefix("film:"): film(command: String(filmed.dropFirst(5)))
         case "island.frames": FrameProbe.run(island: island)
         case let click where click.hasPrefix("click:"): island.debugClick(String(click.dropFirst(6)))
         case "island.expand": island.debugSetPresentation(.expanded)
@@ -59,6 +65,9 @@ final class DebugTools: NSObject {
         case "island.charging":
             island.showCharging(Battery.current() ?? BatteryState(level: 0.64, isCharging: true, isPluggedIn: true))
         case "island.unlock": island.showUnlocked()
+        case "island.arrive": island.model.arrivals += 1
+        case "standby.start": StandbyController.shared?.start(manually: true)
+        case "standby.stop": StandbyController.shared?.stop()
         case "island.volume": island.showLevel(LevelHUD(kind: .volume, value: 0.62))
         case "island.controls": island.debugSetPresentation(.controls)
         case "island.hover": island.model.isHovered = true
@@ -133,9 +142,28 @@ final class DebugTools: NSObject {
         case "player.open": player.open(from: island.artScreenRect())
         case "player.close": player.close()
         case "player.lyrics":
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.86)) { player.model.showLyrics.toggle() }
+            withAnimation(IslandMotion.panel) { player.model.showLyrics.toggle() }
         case "settings.open": openSettings()
+        case let send where send.hasPrefix("portal.send:"):
+            portal?.send(files: [URL(fileURLWithPath: String(send.dropFirst(12)))], text: nil)
+        case "faceid.unlocked": island.showUnlocked(face: true)
+        case "touchid.unlocked": island.showUnlocked(face: false)
+        case "faceid.pill": lockScreen.showFaceScan(.scanning, square: false)
+        case "faceid.pillmatched": lockScreen.showFaceScan(.matched, square: false)
+        case "faceid.square": lockScreen.showFaceScan(.scanning, square: true)
+        case "faceid.squarematched": lockScreen.showFaceScan(.matched, square: true)
+        case "faceid.needspassword": lockScreen.showFaceScan(.needsPassword, square: true)
+        case "faceid.hide": lockScreen.hideFaceScan()
+        case "faceid.test": faceID?.test()
+        case "portal.demo": portal?.demo()
+        case "portal.sent": portal?.demo(direction: .sent)
+        case "portal.edge": portal?.debugEdge(1)
+        case "portal.edgehide": portal?.debugEdge(0)
+        case "portal.pair":
+            portal?.beginPairing()
+            Log.media.notice("Portal pairing URL: \(self.portal?.pairingURL?.absoluteString ?? "none", privacy: .public)")
         case "tutorial.open": openTutorial()
+        case "tutorial.whatsnew": openWhatsNew()
         case "tutorial.next": NotificationCenter.default.post(name: OnboardingView.debugNext, object: nil)
         case "lock.preview": lockScreen.showPreview()
         case "lock.fail": lockScreen.authenticationFailed()
@@ -177,6 +205,24 @@ final class DebugTools: NSObject {
                     WindowCapture.capture(windowID: windowID,
                                           to: directory.appending(path: String(format: "film-%03d.png", ms)))
                 }
+            }
+        }
+    }
+
+    /// Runs another debug command and captures the island window at fixed moments after it,
+    /// to look at a transition frame by frame (`film-000.png` …).
+    private func film(command: String) {
+        let windowID = UInt32(truncatingIfNeeded: island.window.windowNumber)
+        let directory = Self.captureDirectory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let start = DispatchTime.now()
+        handle(command)
+        DispatchQueue.global(qos: .userInteractive).async {
+            for ms in [0, 40, 80, 120, 170, 230, 300, 400, 550, 900] {
+                let target = start + .milliseconds(ms)
+                while DispatchTime.now() < target { usleep(500) }
+                WindowCapture.capture(windowID: windowID,
+                                      to: directory.appending(path: String(format: "film-%03d.png", ms)))
             }
         }
     }

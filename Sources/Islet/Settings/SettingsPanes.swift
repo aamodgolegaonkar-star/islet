@@ -5,7 +5,7 @@ import SwiftUI
 /// The contents of each Settings page. Options that only matter when another one is on
 /// appear beneath it (and slide away when it's turned off) instead of sitting there greyed out.
 extension SettingsView {
-    private var reveal: Animation { .spring(response: 0.34, dampingFraction: 0.86) }
+    private var reveal: Animation { IslandMotion.subtle }
 
     // MARK: - Island
 
@@ -66,8 +66,18 @@ extension SettingsView {
             }
         }
 
-        Section("Behavior") {
+        Section {
             Toggle("Open when the pointer rests on it", isOn: $settings.expandOnHover)
+            Toggle("Swipe left or right to skip songs", isOn: $settings.swipeToSkip)
+            Toggle("Show a small clock when nothing is playing", isOn: $settings.islandClock)
+            Picker("Hide a paused song", selection: $settings.hidePausedPlayer) {
+                ForEach(PausedPlayerHide.allCases) { Text($0.title).tag($0) }
+            }
+            Toggle("Hide from screenshots and screen sharing", isOn: $settings.hideFromScreenCapture)
+        } header: {
+            Text("Behavior")
+        } footer: {
+            Text("Swipe with two fingers over the island: left for the next song, right for the previous one. A hidden song comes back as soon as music plays.")
         }
     }
 
@@ -113,6 +123,18 @@ extension SettingsView {
             Toggle("Dot while the microphone or camera is in use", isOn: $settings.showPrivacyDots)
             Toggle("Warn at 20% and 10% battery", isOn: $settings.showLowBattery)
         }
+
+        Section("Charging") {
+            Toggle("Show when a charger is connected", isOn: $settings.showChargingAlert.animation(reveal))
+            if settings.showChargingAlert {
+                Picker("Battery", selection: $settings.batteryIconStyle) {
+                    ForEach(BatteryIconStyle.allCases) { Text($0.title).tag($0) }
+                }
+                sliderRow("Stays for", value: $settings.chargingAlertDuration, in: 1.5...10,
+                          low: "Brief", high: "Long",
+                          readout: String(format: "%.1f s", settings.chargingAlertDuration))
+            }
+        }
     }
 
     // MARK: - Shelf
@@ -130,6 +152,159 @@ extension SettingsView {
                  ? "The shelf keeps its own copies, so you can move or delete the originals. Removing a file from the shelf deletes only its copy."
                  : "Drag files onto the island to set them aside, then drag them out wherever you need them, or AirDrop them.")
                 .contentTransition(.opacity)
+        }
+    }
+
+    // MARK: - Portal
+
+    @ViewBuilder
+    var portalPane: some View {
+        Section {
+            Toggle("Portal", isOn: $settings.portalEnabled.animation(reveal))
+        } footer: {
+            Text("Fling photos, videos, files, text and links between your phone (iPhone or Android) and this Mac over your Wi-Fi. No app to install: your phone uses a page this Mac serves. Off stops this Mac listening on the network.")
+        }
+        if settings.portalEnabled {
+            Section {
+                if let problem = portal.problem {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
+                if let url = portal.pairingURL, let qr = PortalController.qrCode(for: url) {
+                    HStack(alignment: .center, spacing: 18) {
+                        Image(nsImage: qr)
+                            .interpolation(.none)
+                            .resizable()
+                            .frame(width: 170, height: 170)
+                            .padding(10)
+                            .background(.white, in: .rect(cornerRadius: 14))
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(portal.pairingAndroid ? "Scan with your Android phone's camera" : "Scan with your iPhone's Camera").font(.headline)
+                            Text(portal.pairingAndroid
+                                 ? "Open the link in Chrome, tap Pair, then ⋮ → Add to Home screen. The code works once, for five minutes. Your phone needs to be on the same Wi-Fi."
+                                 : "Open the link, tap Pair, then Share → Add to Home Screen. The code works once, for five minutes. Your iPhone needs to be on the same Wi-Fi.")
+                                .font(.callout).foregroundStyle(.secondary)
+                            Button("Done") { portal.endPairing() }
+                        }
+                    }
+                    .padding(.vertical, 6)
+                } else {
+                    LabeledContent("Pair a phone") {
+                        HStack {
+                            Button("iPhone") { portal.beginPairing() }
+                            Button("Android") { portal.beginPairing(android: true) }
+                        }
+                        .disabled(!portal.isRunning)
+                    }
+                }
+                if portal.devices.isEmpty {
+                    Text("None yet.").foregroundStyle(.secondary)
+                }
+                ForEach(portal.devices) { device in
+                    LabeledContent {
+                        Button("Forget") { portal.forget(device) }
+                    } label: {
+                        Label(device.name, systemImage: "smartphone")
+                        Text("Paired \(device.added.formatted(date: .abbreviated, time: .omitted))")
+                    }
+                }
+            } header: {
+                Text("Paired phones")
+            }
+            .onDisappear { portal.endPairing() }
+
+            Section {
+                LabeledContent("Save to") {
+                    HStack {
+                        Text(settings.portalSaveFolder.lastPathComponent).foregroundStyle(.secondary)
+                        Button("Choose…") {
+                            let panel = NSOpenPanel()
+                            panel.canChooseDirectories = true
+                            panel.canChooseFiles = false
+                            panel.directoryURL = settings.portalSaveFolder
+                            if panel.runModal() == .OK, let url = panel.url { settings.portalSaveFolder = url }
+                        }
+                    }
+                }
+                Picker("After receiving", selection: $settings.portalAfterReceive) {
+                    ForEach(PortalAfterReceive.allCases) { Text($0.title).tag($0) }
+                }
+                Toggle("Open links in the browser", isOn: $settings.portalOpenLinks)
+            } header: {
+                Text("Receiving")
+            } footer: {
+                Text("Photos, videos and files are saved to this folder. Text always goes on the clipboard; with links off, links are only copied too.")
+            }
+
+            Section {
+                Toggle("Drag to the screen's right edge to send", isOn: $settings.portalEdgeSend)
+            } header: {
+                Text("Sending")
+            } footer: {
+                Text("Drag files, links or text to the right edge of your screen, where your phone sits, and let go. The trackpad ticks faster as you near the edge. Your phone collects them when Portal is open.")
+            }
+
+            Section("Effect") {
+                Picker("Style", selection: $settings.portalEffect) {
+                    ForEach(PortalEffect.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Toggle("Match Appearance colors", isOn: Binding(
+                    get: { settings.portalTheme == nil },
+                    set: { settings.portalTheme = $0 ? nil : settings.accentTheme }).animation(reveal))
+                if let theme = settings.portalTheme {
+                    LabeledContent("Colors") {
+                        ThemePicker(selection: Binding(get: { theme }, set: { settings.portalTheme = $0 }))
+                    }
+                }
+                Toggle("Show the effect on this Mac", isOn: $settings.portalShowEffect)
+                Toggle("Trackpad haptics", isOn: $settings.portalHaptics)
+                LabeledContent("Preview") {
+                    Button("Try It") { portal.demo() }
+                }
+            }
+        }
+    }
+
+    // MARK: - Appearance
+
+    @ViewBuilder
+    var appearancePane: some View {
+        Section {
+            ThemeHero(theme: settings.accentTheme)
+                .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10))
+            LabeledContent("Colors") {
+                ThemePicker(selection: $settings.accentTheme)
+            }
+        } footer: {
+            Text("Used for switches and sliders, Portal, Standby and the sidebar. \(settings.accentTheme.title) is on.")
+        }
+    }
+
+    // MARK: - Standby
+
+    @ViewBuilder
+    var standbyPane: some View {
+        Section {
+            Toggle("Standby", isOn: $settings.standbyEnabled.animation(reveal))
+        } footer: {
+            Text("While your Mac is charging and nobody's using it, the screen turns into a big clock with what's playing, the weather and the battery. Move the mouse or press any key to leave.")
+        }
+        if settings.standbyEnabled {
+            Section {
+                Picker("Start after", selection: $settings.standbyIdleMinutes) {
+                    ForEach([1, 2, 5, 10, 15, 30], id: \.self) { Text("\($0) min idle").tag($0) }
+                }
+                Toggle("Keep the display on", isOn: $settings.standbyKeepAwake)
+            } footer: {
+                Text(settings.standbyKeepAwake ? "While Standby is up the display never sleeps, so your Mac won't lock itself. Turn this off if anyone else could reach it." : "The display sleeps on its usual schedule, which ends Standby, and your Mac locks as it normally would.")
+            }
+        }
+        Section {
+            LabeledContent("Preview") {
+                Button("Start Standby") { StandbyController.shared?.start(manually: true) }
+            }
+        } footer: {
+            Text("You can also start it any time from the menu bar.")
         }
     }
 

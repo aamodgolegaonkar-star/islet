@@ -40,6 +40,16 @@ enum SnapshotRenderer {
             }
         }
         settings.islandStyle = savedStyle
+        for style in BatteryIconStyle.allCases {
+            let battery = BatteryState(level: 0.64, isCharging: true, isPluggedIn: true)
+            save(ChargingContent(battery: battery, style: style).frame(width: 300, height: 32).background(.black),
+                 size: CGSize(width: 300, height: 32), to: output.appending(path: "charging-\(style.rawValue).png"))
+        }
+
+        for (name, demo) in [("demo-swipe", AnyView(SwipeSkipDemo())), ("demo-outoftheway", AnyView(OutOfTheWayDemo()))] {
+            save(demo.frame(width: 600, height: 300).background(Color(red: 0.2, green: 0.15, blue: 0.3)),
+                 size: CGSize(width: 600, height: 300), to: output.appending(path: "\(name).png"))
+        }
 
         let screen = CGSize(width: 1440, height: 900)
         for lyrics in [false, true] {

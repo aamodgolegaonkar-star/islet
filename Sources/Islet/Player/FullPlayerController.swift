@@ -59,7 +59,7 @@ final class FullPlayerController {
             installKeyMonitor()
             window?.makeKeyAndOrderFront(nil)
             NSApp.activate()
-            withAnimation(.spring(response: 0.62, dampingFraction: 0.84)) { model.isOpen = true }
+            withAnimation(IslandMotion.panel) { model.isOpen = true }
             return
         }
         let origin = screenRect.flatMap { rect in NSScreen.screens.first { $0.frame.intersects(rect) } }
@@ -82,7 +82,7 @@ final class FullPlayerController {
             // Let the collapsed frame render once, then spring open.
             try? await Task.sleep(for: .milliseconds(24))
             guard self.isVisible, self.model.isPresented else { return }
-            withAnimation(.spring(response: 0.62, dampingFraction: 0.84)) { self.model.isOpen = true }
+            withAnimation(IslandMotion.panel) { self.model.isOpen = true }
         }
     }
 
@@ -100,7 +100,7 @@ final class FullPlayerController {
             model.origin = centeredOrigin(in: screen)
         }
         removeKeyMonitor()
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) {
+        withAnimation(IslandMotion.panel) {
             model.isOpen = false
         } completion: { [weak self] in
             guard let self, !self.model.isOpen else { return }
@@ -173,7 +173,7 @@ final class FullPlayerController {
         case 123: store.seek(to: store.elapsed(at: Date()) - 10)           // left
         case 124: store.seek(to: store.elapsed(at: Date()) + 10)           // right
         case 37:                                                           // L
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.86)) { model.showLyrics.toggle() }
+            withAnimation(IslandMotion.panel) { model.showLyrics.toggle() }
         default: return false
         }
         return true

@@ -136,19 +136,27 @@ struct IslandPillButton: View {
     let symbol: String
     let help: String
     let id: String
+    /// A round button of this size instead of a pill.
+    var diameter: CGFloat?
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         RoutedButton(id, action: action) {
             Group {
                 if let label { Label(label, systemImage: symbol) } else { Image(systemName: symbol) }
             }
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.85))
+            .font(.system(size: diameter == nil ? 11 : 12, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.88))
+            .frame(width: diameter, height: diameter)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Capsule().fill(.white.opacity(0.12)))
+        .padding(.horizontal, diameter == nil ? 8 : 0)
+        .padding(.vertical, diameter == nil ? 4 : 0)
+        .background(Capsule().fill(.white.opacity(router?.pressed == id ? 0.24 : hovering ? 0.18 : 0.12)))
+        .scaleEffect(router?.pressed == id ? 0.9 : 1)
+        .animation(IslandMotion.quick, value: router?.pressed == id)
+        .animation(IslandMotion.quick, value: hovering)
+        .onHover { hovering = $0 }
         .help(help)
     }
 }

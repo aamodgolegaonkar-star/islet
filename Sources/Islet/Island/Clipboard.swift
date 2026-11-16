@@ -126,13 +126,13 @@ struct ClipboardView: View {
                         ClipboardCard(entry: entry, copied: copied == entry.id,
                                       copy: {
                                           history.copy(entry)
-                                          withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { copied = history.entries.first?.id }
+                                          withAnimation(IslandMotion.quick) { copied = history.entries.first?.id }
                                       },
                                       remove: { history.remove(entry) })
                     }
                 }
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: history.entries)
+            .animation(IslandMotion.subtle, value: history.entries)
         }
     }
 }

@@ -96,7 +96,7 @@ struct FullPlayerView: View {
                     .shadow(color: .black.opacity(open ? 0.38 : 0), radius: 34, y: 20)
                     .scaleEffect(store.isPlaying || !open ? 1 : 0.9)
                     .offset(x: cover.minX, y: cover.minY)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.7), value: store.isPlaying)
+                    .animation(IslandMotion.playful, value: store.isPlaying)
                     .onTapGesture { toggleLyrics() }
 
                 // 3. Controls and lyrics fade in once the hero is under way.
@@ -118,14 +118,14 @@ struct FullPlayerView: View {
                         .offset(x: layout.lyrics.minX, y: layout.lyrics.minY)
                         .opacity(open ? 1 : 0)
                         .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .offset(x: 70)).animation(.spring(response: 0.6, dampingFraction: 0.86).delay(0.08)),
-                            removal: .opacity.combined(with: .offset(x: 40)).animation(.easeOut(duration: 0.2))))
+                            insertion: .opacity.combined(with: .offset(x: 70)).animation(IslandMotion.panel.delay(0.08)),
+                            removal: .opacity.combined(with: .offset(x: 40)).animation(IslandMotion.quick)))
                 }
 
                 closeButton
                     .offset(x: 26, y: 26)
                     .opacity(open ? 1 : 0)
-                    .animation(.easeOut(duration: 0.3).delay(open ? 0.2 : 0), value: open)
+                    .animation(IslandMotion.quick.delay(open ? 0.2 : 0), value: open)
             }
             .frame(width: size.width, height: size.height, alignment: .topLeading)
         }
@@ -141,7 +141,7 @@ struct FullPlayerView: View {
     }
 
     private func toggleLyrics() {
-        withAnimation(.spring(response: 0.6, dampingFraction: 0.86)) { model.showLyrics.toggle() }
+        withAnimation(IslandMotion.panel) { model.showLyrics.toggle() }
     }
 }
 
@@ -202,7 +202,7 @@ struct PlayerControls: View {
                     .shadow(color: .black.opacity(0.18), radius: 6, y: 1)
                     Spacer(minLength: 8)
                     Button {
-                        withAnimation(.spring(response: 0.6, dampingFraction: 0.86)) { model.showLyrics.toggle() }
+                        withAnimation(IslandMotion.panel) { model.showLyrics.toggle() }
                     } label: {
                         Image(systemName: model.showLyrics ? "quote.bubble.fill" : "quote.bubble")
                             .font(.system(size: 16, weight: .semibold))

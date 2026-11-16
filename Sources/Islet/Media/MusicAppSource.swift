@@ -18,7 +18,10 @@ final class MusicAppSource {
     private var artworkRevision = 10_000
     private let artworkFile = FileManager.default.temporaryDirectory.appending(path: "islet-artwork.bin")
 
+    /// Asks Music itself whether it's running (without launching it): a freshly launched
+    /// Islet's running-apps list can briefly come back empty, which used to clear the song.
     private static let stateScript = """
+    if application "Music" is not running then return "STOPPED"
     tell application "Music"
         if player state is stopped then return "STOPPED"
         set t to current track
@@ -33,7 +36,10 @@ final class MusicAppSource {
             MainActor.assumeIsolated { self?.poll() }
         }
         timer?.tolerance = pollInterval * 0.2
-        observer = DistributedObserver("com.apple.Music.playerInfo") { [weak self] _ in self?.poll() }
+        observer = DistributedObserver("com.apple.Music.playerInfo") { [weak self] note in
+            // Music's last word as it quits is "Stopped"; asking it anything then relaunches it.
+            if note.userInfo?["Player State"] as? String == "Stopped" { self?.handle("STOPPED") } else { self?.poll() }
+        }
         poll()
     }
 
@@ -94,8 +100,9 @@ final class MusicAppSource {
 
     private func poll() {
         guard !polling else { return }
-        // Never launch Music just to ask what it is playing.
-        guard musicIsRunning else {
+        // Never launch Music just to ask what it is playing. When the running-apps list says
+        // it's gone but a song is showing, the script confirms (that list can lag at launch).
+        guard musicIsRunning || lastPersistentID != nil else {
             onEvent?(.nothingPlaying)
             return
         }
@@ -112,6 +119,7 @@ final class MusicAppSource {
         // playing; only "STOPPED" means nothing is.
         guard let output else { return }
         guard output != "STOPPED" else {
+            lastPersistentID = nil
             onEvent?(.nothingPlaying)
             return
         }

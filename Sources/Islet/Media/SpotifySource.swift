@@ -22,7 +22,9 @@ final class SpotifySource {
     private var artworkRevision = 20_000
     private var playing = false
 
+    /// Asks Spotify itself whether it's running (without launching it); see MusicAppSource.
     private static let stateScript = """
+    if application "Spotify" is not running then return "STOPPED"
     tell application "Spotify"
         if player state is stopped then return "STOPPED"
         set t to current track
@@ -36,8 +38,9 @@ final class SpotifySource {
 
     func start(pollInterval: TimeInterval) {
         interval = pollInterval
-        observer = DistributedObserver("com.spotify.client.PlaybackStateChanged") { [weak self] _ in
-            self?.read()
+        observer = DistributedObserver("com.spotify.client.PlaybackStateChanged") { [weak self] note in
+            // Its last word as it quits is "Stopped"; asking it anything then relaunches it.
+            if note.userInfo?["Player State"] as? String == "Stopped" { self?.handle("STOPPED") } else { self?.read() }
         }
         read()
     }
@@ -59,7 +62,7 @@ final class SpotifySource {
 
     private func read() {
         guard !reading else { return }
-        guard isRunning else {
+        guard isRunning || trackID != nil else {
             setPlaying(false)
             onEvent?(.nothingPlaying)
             return
@@ -76,6 +79,7 @@ final class SpotifySource {
         // No answer (Spotify busy, or Islet not allowed to ask it) isn't "stopped".
         guard let output else { return }
         guard output != "STOPPED" else {
+            trackID = nil
             setPlaying(false)
             onEvent?(.nothingPlaying)
             return

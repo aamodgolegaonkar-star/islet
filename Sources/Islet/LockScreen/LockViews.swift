@@ -2,13 +2,36 @@ import IsletCore
 import SwiftUI
 
 extension View {
-    /// A Liquid Glass tile over the wallpaper that is really behind it.
-    @MainActor
-    func lockGlass<S: Shape>(_ shape: S, glass: Glass? = nil) -> some View {
-        self
-            .snapshotSafeGlass(glass ?? .islet, in: shape)
-            .background { WallpaperBackdrop().clipShape(shape) }
-            .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+    /// A Liquid Glass tile over the wallpaper that is really behind it. With the Clear
+    /// Liquid Glass style it's the island's see-through glass, bending the wallpaper at its
+    /// rim; a radius of half the side makes a circle.
+    func lockGlass(cornerRadius: CGFloat) -> some View {
+        modifier(LockGlass(radius: cornerRadius))
+    }
+}
+
+private struct LockGlass: ViewModifier {
+    let radius: CGFloat
+    @Environment(\.isSnapshotRendering) private var snapshot
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let tuning = LiveTuning.shared
+        let clear = tuning.clearGlass && !snapshot && ClearGlassSupport.isAvailable
+        content
+            .snapshotSafeGlass(clear ? .identity : .islet, visible: !clear, in: shape)
+            .background {
+                ZStack {
+                    WallpaperBackdrop().clipShape(shape)
+                    if clear {
+                        // Above the wallpaper so it bends it; unclipped, it draws its own rim.
+                        ClearGlass(topRadius: radius, bottomRadius: radius, frost: tuning.clearFrost, inWindow: true)
+                        shape.fill(.black.opacity(tuning.clearDim))
+                    }
+                }
+            }
+            // Clear glass lifts itself with the filter's own soft shadow.
+            .shadow(color: .black.opacity(clear ? 0 : 0.2), radius: 10, y: 4)
     }
 }
 
@@ -36,7 +59,7 @@ struct LockWidgetsRow: View {
         .environment(\.wallpaper, model.widgetsWallpaper)
         .environment(\.colorScheme, .dark)
         .environment(\.appearsActive, true)
-        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: settings.lockWidgets)
+        .animation(IslandMotion.subtle, value: settings.lockWidgets)
     }
 }
 
@@ -138,7 +161,7 @@ struct VolumeRing: View {
                 .font(.system(size: 17, weight: .semibold))
         }
         .padding(10)
-        .animation(.easeInOut(duration: 0.3), value: level)
+        .animation(IslandMotion.quick, value: level)
     }
 }
 
@@ -215,8 +238,6 @@ struct LockPlayerPlatter: View {
     let store: PlayerStore
     @Bindable var model: LockModel
 
-    private let shape = RoundedRectangle(cornerRadius: 34, style: .continuous)
-
     var body: some View {
         if model.isPresented { platter }
     }
@@ -248,7 +269,7 @@ struct LockPlayerPlatter: View {
         .padding(.bottom, 8)
         .frame(width: 410)
         .foregroundStyle(.white)
-        .lockGlass(shape)
+        .lockGlass(cornerRadius: 34)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.wallpaper, model.playerWallpaper)
         .environment(\.colorScheme, .dark)

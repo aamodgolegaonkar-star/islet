@@ -26,7 +26,7 @@ struct LockWidgetsEditor: View {
     }
 }
 
-private let editSpring = Animation.spring(response: 0.38, dampingFraction: 0.82)
+private var editSpring: Animation { IslandMotion.subtle }
 
 // MARK: - The row
 
@@ -115,7 +115,7 @@ private struct EditableTile: View {
                     .transition(.scale.combined(with: .opacity))
                 }
             }
-            .onHover { over in withAnimation(.easeOut(duration: 0.15)) { hovering = over } }
+            .onHover { over in withAnimation(IslandMotion.quick) { hovering = over } }
             .help("Drag to move, or drag down to the tray to remove")
     }
 }

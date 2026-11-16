@@ -105,7 +105,7 @@ struct HeadphoneContent: View {
         }
         .padding(.horizontal, 20)
         .onAppear {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.62).delay(0.05)) { appeared = true }
+            withAnimation(IslandMotion.playful.delay(0.05)) { appeared = true }
         }
     }
 
@@ -186,7 +186,7 @@ struct AgentContent: View {
         .routedClick("agent", action: tap)
         .onTapGesture(perform: tap)
         .onAppear {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.6)) { appeared = true }
+            withAnimation(IslandMotion.playful) { appeared = true }
         }
     }
 
@@ -233,6 +233,25 @@ struct LowBatteryContent: View {
     }
 }
 
+/// The resting island's small clock: the date at the leading edge, the time at the
+/// trailing (beside a notch, one in each wing). Redraws once a minute, on the minute.
+struct IdleClockContent: View {
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            HStack {
+                Text(context.date, format: .dateTime.weekday(.abbreviated).day())
+                    .foregroundStyle(.white.opacity(0.6))
+                Spacer(minLength: 0)
+                Text(context.date, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                    .foregroundStyle(.white)
+            }
+            .font(.system(size: 13, weight: .semibold).monospacedDigit())
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+        }
+    }
+}
+
 /// A running timer in the compact island: icon at the leading edge, time at the trailing.
 struct TimerCompactContent: View {
     let end: Date
@@ -260,7 +279,7 @@ struct TimerCompactContent: View {
                 try? await Task.sleep(for: .seconds(fraction > 0.01 ? fraction : 1), tolerance: .milliseconds(20))
             }
         }
-        .animation(.snappy(duration: 0.25), value: remaining)
+        .animation(IslandMotion.quick, value: remaining)
     }
 
     private var remaining: String {

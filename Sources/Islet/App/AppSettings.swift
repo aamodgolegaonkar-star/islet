@@ -161,6 +161,88 @@ enum EdgeGlowColors: String, CaseIterable, Identifiable {
     }
 }
 
+/// When the island drops a paused song and goes back to resting (Canopy's "Hide the player
+/// when music pauses"). The raw value is the delay in seconds; never keeps it showing.
+enum PausedPlayerHide: Int, CaseIterable, Identifiable {
+    case never = -1
+    case instantly = 0
+    case tenSeconds = 10
+    case oneMinute = 60
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .never: "Never"
+        case .instantly: "Instantly"
+        case .tenSeconds: "After 10 Seconds"
+        case .oneMinute: "After 1 Minute"
+        }
+    }
+}
+
+/// How the charging alert draws the battery.
+enum BatteryIconStyle: String, CaseIterable, Identifiable {
+    case battery
+    case ring
+    case percent
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .battery: "Battery"
+        case .ring: "Ring"
+        case .percent: "Percentage Only"
+        }
+    }
+}
+
+/// What happens to a file after it arrives through Portal.
+enum PortalAfterReceive: String, CaseIterable, Identifiable {
+    case shelf
+    case reveal
+    case open
+    case nothing
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .shelf: "Put It on the Shelf"
+        case .reveal: "Show in Finder"
+        case .open: "Open It"
+        case .nothing: "Just Save It"
+        }
+    }
+}
+
+/// Where Face ID shows that it's looking for you on the lock screen.
+enum FaceIDStyle: String, CaseIterable, Identifiable {
+    /// A slim pill at the top: a lock and the Face ID mark, in the island.
+    case pill
+    /// A big, clean square with the Face ID mark.
+    case square
+
+    var id: String { rawValue }
+    var title: String { self == .pill ? "Pill" : "Square" }
+}
+
+/// How the portal looks when something goes through, on the Mac and the phone.
+enum PortalEffect: String, CaseIterable, Identifiable {
+    case vortex
+    case ripple
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .vortex: "Vortex"
+        case .ripple: "Ripple"
+        }
+    }
+}
+
 enum LevelPosition: String, CaseIterable, Identifiable {
     case island
     case leftEdge
@@ -257,6 +339,11 @@ final class AppSettings {
         static let lockSound = "lockSoundStyle"
         static let motion = "animatedArtworkEnabled"
         static let islandStyle = "islandStyle"
+        static let accentTheme = "accentTheme"
+        static let portalTheme = "portalTheme"
+        static let standbyEnabled = "standbyEnabled"
+        static let standbyIdleMinutes = "standbyIdleMinutes"
+        static let standbyKeepAwake = "standbyKeepAwake"
         static let glassTransparency = "glassTransparency"
         static let islandWidth = "islandWidthScale"
         static let islandHeight = "islandHeightScale"
@@ -278,6 +365,7 @@ final class AppSettings {
         static let privacyDots = "showPrivacyDots"
         static let lowBattery = "showLowBattery"
         static let islandLyrics = "showIslandLyrics"
+        static let islandClock = "islandClock"
         static let lyricStyle = "lyricStyle"
         static let wordIcons = "lyricWordIcons"
         static let screenLyrics = "screenLyrics"
@@ -302,6 +390,30 @@ final class AppSettings {
         static let shelfCopies = "shelfKeepsCopies"
         static let emulateNotch = AppSettings.emulateNotchKey
         static let levelPosition = "levelPosition"
+        static let hideFromCapture = "hideFromScreenCapture"
+        static let portal = "portalEnabled"
+        static let faceID = "faceIDEnabled"
+        static let faceStrictness = "faceIDStrictness"
+        static let faceLiveness = "faceIDLiveness"
+        static let faceStyle = "faceIDStyle"
+        static let faceDuration = "faceIDDuration"
+        static let faceOnWake = "faceIDOnWake"
+        static let faceOnLock = "faceIDOnLock"
+        static let faceOnClick = "faceIDOnClick"
+        static let faceLearn = "faceIDLearn"
+        static let faceBlinkNudge = "faceIDBlinkNudge"
+        static let portalFolder = "portalSaveFolder"
+        static let portalAfter = "portalAfterReceive"
+        static let portalLinks = "portalOpenLinks"
+        static let portalEdge = "portalEdgeSend"
+        static let portalEffect = "portalEffect"
+        static let portalShowEffect = "portalShowEffect"
+        static let portalHaptics = "portalHaptics"
+        static let hidePaused = "hidePausedPlayer"
+        static let swipeToSkip = "swipeToSkip"
+        static let chargingAlert = "showChargingAlert"
+        static let chargingDuration = "chargingAlertDuration"
+        static let batteryIcon = "batteryIconStyle"
         static let clipboard = "clipboardHistory"
         static let waveform = "liveWaveform"
         static let equalizer = "equalizerEnabled"
@@ -329,8 +441,31 @@ final class AppSettings {
     var animatedArtworkEnabled: Bool {
         didSet { defaults.set(animatedArtworkEnabled, forKey: Key.motion) }
     }
+    /// Settings → Appearance: the colors of controls, Portal, Standby and the sidebar.
+    var accentTheme: AccentTheme {
+        didSet { defaults.set(accentTheme.rawValue, forKey: Key.accentTheme) }
+    }
+    /// Portal's own colors; nil follows `accentTheme`.
+    var portalTheme: AccentTheme? {
+        didSet { defaults.set(portalTheme?.rawValue ?? "", forKey: Key.portalTheme) }
+    }
+    var portalColors: AccentTheme { portalTheme ?? accentTheme }
+
+    /// Standby: a full-screen clock while the Mac charges and nobody is using it.
+    var standbyEnabled: Bool {
+        didSet { defaults.set(standbyEnabled, forKey: Key.standbyEnabled) }
+    }
+    /// Idle minutes on the charger before Standby starts.
+    var standbyIdleMinutes: Int {
+        didSet { defaults.set(standbyIdleMinutes, forKey: Key.standbyIdleMinutes) }
+    }
+    /// Holds off display sleep while Standby is up.
+    var standbyKeepAwake: Bool {
+        didSet { defaults.set(standbyKeepAwake, forKey: Key.standbyKeepAwake) }
+    }
+
     var islandStyle: IslandStyle {
-        didSet { defaults.set(islandStyle.rawValue, forKey: Key.islandStyle) }
+        didSet { defaults.set(islandStyle.rawValue, forKey: Key.islandStyle); LiveTuning.shared.clearGlass = islandStyle == .clearGlass }
     }
     /// 0 = frosted and smoky, 0.5 = Apple's stock glass, 1 = fully clear.
     var glassTransparency: Double {
@@ -508,6 +643,10 @@ final class AppSettings {
     var showLowBattery: Bool {
         didSet { defaults.set(showLowBattery, forKey: Key.lowBattery) }
     }
+    /// A small clock in the resting island when nothing is playing.
+    var islandClock: Bool {
+        didSet { defaults.set(islandClock, forKey: Key.islandClock) }
+    }
     /// The line being sung, under the artist in the open island.
     var showIslandLyrics: Bool {
         didSet { defaults.set(showIslandLyrics, forKey: Key.islandLyrics); LiveTuning.shared.showIslandLyrics = showIslandLyrics }
@@ -515,6 +654,92 @@ final class AppSettings {
     /// Where the volume and brightness level shows: the island, or a slider at a screen edge.
     var levelPosition: LevelPosition {
         didSet { defaults.set(levelPosition.rawValue, forKey: Key.levelPosition) }
+    }
+    /// Face ID: unlock by looking at the Mac. Off until the user sets it up.
+    var faceIDEnabled: Bool {
+        didSet { defaults.set(faceIDEnabled, forKey: Key.faceID) }
+    }
+    /// 0 easier … 1 stricter (`FaceID.threshold`).
+    var faceIDStrictness: Double {
+        didSet { defaults.set(faceIDStrictness, forKey: Key.faceStrictness) }
+    }
+    var faceIDLiveness: FaceLiveness {
+        didSet { defaults.set(faceIDLiveness.rawValue, forKey: Key.faceLiveness) }
+    }
+    var faceIDStyle: FaceIDStyle {
+        didSet { defaults.set(faceIDStyle.rawValue, forKey: Key.faceStyle) }
+    }
+    /// Seconds it looks for you each time.
+    var faceIDDuration: Double {
+        didSet { defaults.set(faceIDDuration, forKey: Key.faceDuration) }
+    }
+    /// When it looks: the display waking, right after locking, a click on the notch.
+    var faceIDOnWake: Bool {
+        didSet { defaults.set(faceIDOnWake, forKey: Key.faceOnWake) }
+    }
+    var faceIDOnLock: Bool {
+        didSet { defaults.set(faceIDOnLock, forKey: Key.faceOnLock) }
+    }
+    /// Face ID keeps new looks of you from unlocks (`FaceIDController.learn`).
+    var faceIDLearn: Bool {
+        didSet { defaults.set(faceIDLearn, forKey: Key.faceLearn) }
+    }
+    /// A quick white flash when liveness is waiting for a blink (`considerBlinkNudge`).
+    var faceIDBlinkNudge: Bool {
+        didSet { defaults.set(faceIDBlinkNudge, forKey: Key.faceBlinkNudge) }
+    }
+    var faceIDOnClick: Bool {
+        didSet { defaults.set(faceIDOnClick, forKey: Key.faceOnClick) }
+    }
+    /// Portal: the Mac listens on the local network for paired iPhones.
+    var portalEnabled: Bool {
+        didSet { defaults.set(portalEnabled, forKey: Key.portal) }
+    }
+    /// Where received photos, videos and files are saved.
+    var portalSaveFolder: URL {
+        didSet { defaults.set(portalSaveFolder.path, forKey: Key.portalFolder) }
+    }
+    var portalAfterReceive: PortalAfterReceive {
+        didSet { defaults.set(portalAfterReceive.rawValue, forKey: Key.portalAfter) }
+    }
+    /// Received web links open in the browser (they're always copied too).
+    var portalOpenLinks: Bool {
+        didSet { defaults.set(portalOpenLinks, forKey: Key.portalLinks) }
+    }
+    /// Dragging to the right edge of the screen sends to the phone.
+    var portalEdgeSend: Bool {
+        didSet { defaults.set(portalEdgeSend, forKey: Key.portalEdge) }
+    }
+    var portalEffect: PortalEffect {
+        didSet { defaults.set(portalEffect.rawValue, forKey: Key.portalEffect) }
+    }
+    /// Arrivals play their animation in the island.
+    var portalShowEffect: Bool {
+        didSet { defaults.set(portalShowEffect, forKey: Key.portalShowEffect) }
+    }
+    var portalHaptics: Bool {
+        didSet { defaults.set(portalHaptics, forKey: Key.portalHaptics) }
+    }
+    /// Islet's windows are left out of screenshots, recordings and screen sharing.
+    var hideFromScreenCapture: Bool {
+        didSet { defaults.set(hideFromScreenCapture, forKey: Key.hideFromCapture) }
+    }
+    var hidePausedPlayer: PausedPlayerHide {
+        didSet { defaults.set(hidePausedPlayer.rawValue, forKey: Key.hidePaused) }
+    }
+    /// Two fingers left or right over the island change the song.
+    var swipeToSkip: Bool {
+        didSet { defaults.set(swipeToSkip, forKey: Key.swipeToSkip) }
+    }
+    var showChargingAlert: Bool {
+        didSet { defaults.set(showChargingAlert, forKey: Key.chargingAlert) }
+    }
+    /// Seconds the charging alert stays up.
+    var chargingAlertDuration: Double {
+        didSet { defaults.set(chargingAlertDuration, forKey: Key.chargingDuration) }
+    }
+    var batteryIconStyle: BatteryIconStyle {
+        didSet { defaults.set(batteryIconStyle.rawValue, forKey: Key.batteryIcon) }
     }
     /// The shelf's Clipboard tab keeps what was copied (in memory only).
     var clipboardHistory: Bool {
@@ -581,6 +806,9 @@ final class AppSettings {
             Key.lockSound: LockSoundStyle.iPhone.rawValue,
             Key.motion: true,
             Key.islandStyle: IslandStyle.black.rawValue,
+            Key.standbyEnabled: true,
+            Key.standbyIdleMinutes: 5,
+            Key.standbyKeepAwake: false,
             Key.glassTransparency: 0.5,
             Key.islandWidth: 1.0,
             Key.islandHeight: 1.0,
@@ -601,6 +829,7 @@ final class AppSettings {
             Key.shelf: true,
             Key.privacyDots: true,
             Key.islandLyrics: true,
+            Key.islandClock: false,
             Key.lyricStyle: LyricStyle.wordByWord.rawValue,
             Key.wordIcons: false,
             Key.screenLyrics: true,
@@ -620,6 +849,29 @@ final class AppSettings {
             Key.screenLyricsStyle: ScreenLyricsStyle.fisheye.rawValue,
             Key.lowBattery: true,
             Key.levelPosition: LevelPosition.island.rawValue,
+            Key.hideFromCapture: false,
+            Key.portal: false,
+            Key.faceID: false,
+            Key.faceStrictness: 0.4,
+            Key.faceLiveness: FaceLiveness.natural.rawValue,
+            Key.faceStyle: FaceIDStyle.pill.rawValue,
+            Key.faceDuration: 5.0,
+            Key.faceOnWake: true,
+            Key.faceOnLock: false,
+            Key.faceOnClick: true,
+            Key.faceLearn: true,
+            Key.faceBlinkNudge: true,
+            Key.portalAfter: PortalAfterReceive.shelf.rawValue,
+            Key.portalLinks: true,
+            Key.portalEdge: true,
+            Key.portalEffect: PortalEffect.vortex.rawValue,
+            Key.portalShowEffect: true,
+            Key.portalHaptics: true,
+            Key.hidePaused: PausedPlayerHide.never.rawValue,
+            Key.swipeToSkip: true,
+            Key.chargingAlert: true,
+            Key.chargingDuration: 3.5,
+            Key.batteryIcon: BatteryIconStyle.battery.rawValue,
             Key.clipboard: true,
             Key.waveform: false,
             Key.equalizer: false,
@@ -636,6 +888,11 @@ final class AppSettings {
         lockSoundStyle = LockSoundStyle(rawValue: defaults.string(forKey: Key.lockSound) ?? "") ?? .iPhone
         animatedArtworkEnabled = defaults.bool(forKey: Key.motion)
         islandStyle = IslandStyle(rawValue: defaults.string(forKey: Key.islandStyle) ?? "") ?? .black
+        accentTheme = AccentTheme(rawValue: defaults.string(forKey: Key.accentTheme) ?? "") ?? .aurora
+        portalTheme = AccentTheme(rawValue: defaults.string(forKey: Key.portalTheme) ?? "")
+        standbyEnabled = defaults.bool(forKey: Key.standbyEnabled)
+        standbyIdleMinutes = max(1, defaults.integer(forKey: Key.standbyIdleMinutes))
+        standbyKeepAwake = defaults.bool(forKey: Key.standbyKeepAwake)
         glassTransparency = Self.clamped(defaults.double(forKey: Key.glassTransparency), 0...1)
         islandWidthScale = Self.clamped(defaults.double(forKey: Key.islandWidth), Self.sizeRange)
         islandHeightScale = Self.clamped(defaults.double(forKey: Key.islandHeight), Self.sizeRange)
@@ -657,6 +914,7 @@ final class AppSettings {
         showPrivacyDots = defaults.bool(forKey: Key.privacyDots)
         showLowBattery = defaults.bool(forKey: Key.lowBattery)
         showIslandLyrics = defaults.bool(forKey: Key.islandLyrics)
+        islandClock = defaults.bool(forKey: Key.islandClock)
         lyricStyle = LyricStyle(rawValue: defaults.string(forKey: Key.lyricStyle) ?? "") ?? .wordByWord
         lyricWordIcons = defaults.bool(forKey: Key.wordIcons)
         screenLyrics = defaults.bool(forKey: Key.screenLyrics)
@@ -682,6 +940,31 @@ final class AppSettings {
         shelfKeepsCopies = defaults.bool(forKey: Key.shelfCopies)
         emulateNotch = defaults.bool(forKey: Key.emulateNotch)
         levelPosition = LevelPosition(rawValue: defaults.string(forKey: Key.levelPosition) ?? "") ?? .island
+        hideFromScreenCapture = defaults.bool(forKey: Key.hideFromCapture)
+        portalEnabled = defaults.bool(forKey: Key.portal)
+        faceIDEnabled = defaults.bool(forKey: Key.faceID)
+        faceIDStrictness = Self.clamped(defaults.double(forKey: Key.faceStrictness), 0...1)
+        faceIDLiveness = FaceLiveness(rawValue: defaults.string(forKey: Key.faceLiveness) ?? "") ?? .natural
+        faceIDStyle = FaceIDStyle(rawValue: defaults.string(forKey: Key.faceStyle) ?? "") ?? .pill
+        faceIDDuration = Self.clamped(defaults.double(forKey: Key.faceDuration), 2...15)
+        faceIDOnWake = defaults.bool(forKey: Key.faceOnWake)
+        faceIDOnLock = defaults.bool(forKey: Key.faceOnLock)
+        faceIDOnClick = defaults.bool(forKey: Key.faceOnClick)
+        faceIDLearn = defaults.bool(forKey: Key.faceLearn)
+        faceIDBlinkNudge = defaults.bool(forKey: Key.faceBlinkNudge)
+        portalSaveFolder = defaults.string(forKey: Key.portalFolder).map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        portalAfterReceive = PortalAfterReceive(rawValue: defaults.string(forKey: Key.portalAfter) ?? "") ?? .shelf
+        portalOpenLinks = defaults.bool(forKey: Key.portalLinks)
+        portalEdgeSend = defaults.bool(forKey: Key.portalEdge)
+        portalEffect = PortalEffect(rawValue: defaults.string(forKey: Key.portalEffect) ?? "") ?? .vortex
+        portalShowEffect = defaults.bool(forKey: Key.portalShowEffect)
+        portalHaptics = defaults.bool(forKey: Key.portalHaptics)
+        hidePausedPlayer = PausedPlayerHide(rawValue: defaults.integer(forKey: Key.hidePaused)) ?? .never
+        swipeToSkip = defaults.bool(forKey: Key.swipeToSkip)
+        showChargingAlert = defaults.bool(forKey: Key.chargingAlert)
+        chargingAlertDuration = Self.clamped(defaults.double(forKey: Key.chargingDuration), 1.5...10)
+        batteryIconStyle = BatteryIconStyle(rawValue: defaults.string(forKey: Key.batteryIcon) ?? "") ?? .battery
         clipboardHistory = defaults.bool(forKey: Key.clipboard)
         liveWaveform = defaults.bool(forKey: Key.waveform)
         equalizerEnabled = defaults.bool(forKey: Key.equalizer)
@@ -711,6 +994,7 @@ final class AppSettings {
         // didSet doesn't run in init: publish the loaded values to the live views.
         let live = LiveTuning.shared
         live.glassTransparency = glassTransparency
+        live.clearGlass = islandStyle == .clearGlass
         live.widthScale = islandWidthScale
         live.heightScale = islandHeightScale
         live.notchWidthAdjust = notchWidthAdjust
@@ -801,6 +1085,12 @@ final class AppSettings {
 final class LiveTuning {
     static let shared = LiveTuning()
     var glassTransparency = 0.5
+    /// The Clear Liquid Glass style: the lock screen's tiles use the island's clear glass too.
+    var clearGlass = false
+    /// The Transparency slider on clear glass: fully transparent is crystal clear; lower
+    /// values frost and darken it a little, so white text stays readable over bright pictures.
+    var clearFrost: Double { (1 - glassTransparency) * 16 }
+    var clearDim: Double { (1 - glassTransparency) * 0.3 }
     var widthScale = 1.0
     var heightScale = 1.0
     var notchWidthAdjust = 0.0

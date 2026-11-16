@@ -179,7 +179,7 @@ final class LockScreenController {
         failureWatcher.stop()
         presentTask?.cancel()
         sounds.play(.unlock)
-        dismiss()
+        dismiss(instantly: true)
         onUnlock?()
     }
 
@@ -236,7 +236,7 @@ final class LockScreenController {
             Task { @MainActor [weak self] in
                 let report = await WeatherService.shared.current()
                 guard let self, self.model.isPresented, self.settings.lockWeather else { return }
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { self.model.weather = report }
+                withAnimation(IslandMotion.subtle) { self.model.weather = report }
             }
         }
         model.clockInset = layout.clockInset
@@ -312,7 +312,9 @@ final class LockScreenController {
         fade(panel, to: 1, duration: 0.2)
     }
 
-    private func dismiss() {
+    /// `instantly` on a real unlock: the panels sit in a level-400 space above the desktop,
+    /// so even a 0.25 s fade showed them over it after loginwindow's shield had gone.
+    private func dismiss(instantly: Bool = false) {
         batteryTimer?.invalidate()
         batteryTimer = nil
         cpuTimer?.invalidate()
@@ -322,7 +324,7 @@ final class LockScreenController {
         model.isAlbumOpen = false
         albumModel.isOpen = false
         for panel in [widgetsPanel, playerPanel, albumPanel, islandPanel, motionPanel] where panel.isVisible {
-            fade(panel, to: 0, duration: 0.25) { panel.orderOut(nil) }
+            if instantly { panel.orderOut(nil) } else { fade(panel, to: 0, duration: 0.25) { panel.orderOut(nil) } }
         }
         // Once faded, drop the content so nothing keeps running behind the desktop.
         Task { @MainActor [weak self] in
@@ -330,6 +332,16 @@ final class LockScreenController {
             guard let self, self.generation == dismissal else { return }
             self.model.isPresented = false
             self.albumModel.isPresented = false
+            // Wallpaper pieces are cut again at the next lock; until then they're dead weight.
+            self.model.widgetsWallpaper = nil
+            self.model.playerWallpaper = nil
+            self.islandModel.wallpaper = nil
+            Wallpaper.releaseCrops()
+            // The lock screen's views are gone, but their freed pages stay dirty (and counted
+            // against Islet) until the allocator is asked to hand them back.
+            try? await Task.sleep(for: .seconds(1))
+            guard self.generation == dismissal else { return }
+            malloc_zone_pressure_relief(nil, 0)
         }
     }
 
@@ -367,7 +379,7 @@ final class LockScreenController {
         }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(24))
-            withAnimation(.spring(response: 0.62, dampingFraction: 0.84)) { self.albumModel.isOpen = true }
+            withAnimation(IslandMotion.panel) { self.albumModel.isOpen = true }
         }
     }
 
@@ -376,7 +388,7 @@ final class LockScreenController {
         for panel in [widgetsPanel, playerPanel] where panel.isVisible {
             fade(panel, to: 1, duration: 0.4)
         }
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) {
+        withAnimation(IslandMotion.panel) {
             albumModel.isOpen = false
         } completion: { [weak self] in
             guard let self, !self.albumModel.isOpen else { return }
@@ -402,10 +414,111 @@ final class LockScreenController {
         return panel
     }
 
+    // MARK: - Face ID
+
+    private lazy var faceHUD = FaceHUDState()
+    private lazy var faceHUDPanel: NSPanel = {
+        let panel = makePanel("lock.faceid", CGSize(width: 190, height: 190), FaceIDHUDView(state: faceHUD))
+        panel.ignoresMouseEvents = true
+        return panel
+    }()
+    private var clickMonitor: Any?
+    /// Clicking the lock-screen island (the notch) asks Face ID to look.
+    var onIslandClick: (() -> Void)?
+    var islandClickable = false {
+        didSet {
+            islandPanel.ignoresMouseEvents = !islandClickable
+            if islandClickable, clickMonitor == nil {
+                clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                    MainActor.assumeIsolated {
+                        if let self, event.window === self.islandPanel { self.onIslandClick?() }
+                    }
+                    return event
+                }
+            }
+        }
+    }
+
+    /// Face ID looking for you: in the island (pill) or as a square in the middle.
+    func showFaceScan(_ phase: FaceScanPhase, square: Bool) {
+        guard let screen = NSScreen.screens.first else { return }
+        if square {
+            if !faceHUDPanel.isVisible {
+                let size = faceHUDPanel.frame.size
+                show(faceHUDPanel, at: CGRect(x: screen.frame.midX - size.width / 2, y: screen.frame.midY + 40,
+                                              width: size.width, height: size.height))
+            }
+            withAnimation(IslandMotion.subtle) { faceHUD.phase = phase }
+        } else {
+            if !islandPanel.isVisible {
+                // Lock-screen widgets off: the island comes up just for Face ID.
+                onLockScreen = isLocked
+                islandModel.metrics = IslandMetrics.make(for: screen, style: settings.islandStyle)
+                let size = islandModel.metrics.windowSize
+                show(islandPanel, at: CGRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
+                                             width: size.width, height: size.height))
+                islandModel.wallpaper = Wallpaper.context(for: screen, windowFrame: islandPanel.frame)
+            }
+            islandModel.activity = .faceScan(phase)
+        }
+        if phase == .needsPassword {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(2.5))
+                self?.hideFaceScan()
+            }
+        }
+    }
+
+    /// Face ID's light check: fills the screen with one colour (nil clears it). Below the
+    /// island, so the Face ID pill stays in view; on the lock screen when locked.
+    func flash(_ color: NSColor?) {
+        guard let color else { return flashPanel.orderOut(nil) }
+        flashPanel.backgroundColor = color
+        guard !flashPanel.isVisible, let screen = NSScreen.screens.first else { return }
+        flashPanel.setFrame(screen.frame, display: true)
+        flashPanel.alphaValue = 1
+        flashPanel.orderFrontRegardless()
+        if isLocked { space?.attach(flashPanel) }
+    }
+
+    private lazy var flashPanel: NSPanel = {
+        let panel = IslandPanel(size: .zero)
+        panel.identifier = NSUserInterfaceItemIdentifier("lock.flash")
+        panel.level = NSWindow.Level(rawValue: panel.level.rawValue - 1)
+        panel.contentView = NSView()
+        return panel
+    }()
+
+    /// Hidden windows swap their content only after fading, with no transition: a transition
+    /// started in a window that's no longer drawn never finishes, and the scanning ring of
+    /// dots inside it would keep animating unseen (about 15% CPU, for good).
+    func hideFaceScan() {
+        if faceHUDPanel.isVisible {
+            fade(faceHUDPanel, to: 0, duration: 0.25) { [weak self] in
+                guard let self else { return }
+                self.faceHUDPanel.orderOut(nil)
+                Self.withoutAnimation { self.faceHUD.phase = .matched }
+            }
+        }
+        guard case .faceScan? = islandModel.activity else { return }
+        guard !model.isPresented else { return islandModel.activity = .locked }
+        fade(islandPanel, to: 0, duration: 0.25) { [weak self] in
+            guard let self, case .faceScan? = self.islandModel.activity else { return }
+            self.islandPanel.orderOut(nil)
+            Self.withoutAnimation { self.islandModel.activity = .locked }
+        }
+    }
+
+    private static func withoutAnimation(_ change: () -> Void) {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet, change)
+    }
+
     // MARK: - Debug
 
     func debugExpand() { model.expandFromPlayer() }
     func debugToggleLyrics() {
-        withAnimation(.spring(response: 0.6, dampingFraction: 0.86)) { albumModel.showLyrics.toggle() }
+        withAnimation(IslandMotion.panel) { albumModel.showLyrics.toggle() }
     }
 }

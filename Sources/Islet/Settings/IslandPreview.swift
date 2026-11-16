@@ -37,8 +37,8 @@ struct IslandPreview: View {
             .task(id: span) { wallpaper = Self.wallpaper(span: span, height: geo.size.height / scale) }
         }
         .frame(height: Self.height)
-        .animation(.spring(response: 0.42, dampingFraction: 0.72), value: style)
-        .animation(.spring(response: 0.42, dampingFraction: 0.72), value: tuningKey)
+        .animation(IslandMotion.playful, value: style)
+        .animation(IslandMotion.playful, value: tuningKey)
         .accessibilityHidden(true)
     }
 

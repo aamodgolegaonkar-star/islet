@@ -47,6 +47,14 @@ cp "$BIN" "$APP/Contents/MacOS/Islet"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Resources/THIRD_PARTY_NOTICES.txt" "$APP/Contents/Resources/"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/"
+# Face ID's face model (SFace), compiled for Core ML.
+xcrun coremlcompiler compile "$ROOT/Resources/Models/SFace.mlpackage" "$APP/Contents/Resources/" > /dev/null
+# Its anti-spoofing models (MiniFASNet), once converted (scripts/convert-minifasnet.py).
+for model in AntiSpoof27 AntiSpoof40; do
+  if [ -d "$ROOT/Resources/Models/$model.mlpackage" ]; then
+    xcrun coremlcompiler compile "$ROOT/Resources/Models/$model.mlpackage" "$APP/Contents/Resources/" > /dev/null
+  fi
+done
 cp -R "$ADAPTER/build/MediaRemoteAdapter.framework" "$APP/Contents/Resources/"
 # Sparkle (MIT), the updater.
 mkdir -p "$APP/Contents/Frameworks"
@@ -107,7 +115,13 @@ if [ "${ISLET_ADHOC:-0}" != 1 ]; then
     SIGN="$(identity)"
     SIGN="${SIGN:--}"
 fi
-if [ "$SIGN" != "-" ]; then
+# A real Apple Development certificate (Xcode → Settings → Accounts, a free Apple ID is
+# enough) gives Islet a Team ID. Without one, macOS won't even ask for the camera.
+APPLE_DEV="$(security find-identity -p codesigning -v 2>/dev/null | awk '/"Apple Development/ { print $2; exit }')"
+if [ "${ISLET_ADHOC:-0}" != 1 ] && [ -n "$APPLE_DEV" ] && codesign --force --deep --sign "$APPLE_DEV" "$APP"; then
+    SIGN="apple"
+fi
+if [ "$SIGN" != "-" ] && [ "$SIGN" != "apple" ]; then
     security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
     if ! codesign --force --deep --keychain "$KEYCHAIN" --sign "$SIGN" "$APP"; then
         echo "Signing with $IDENTITY_NAME failed; signing ad hoc." >&2

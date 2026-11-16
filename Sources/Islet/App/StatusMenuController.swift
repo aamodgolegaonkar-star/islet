@@ -90,6 +90,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         motion.addItem(action("Set Apple Music Developer Token…", #selector(setToken)))
         if settings.developerToken != nil { motion.addItem(action("Remove Token", #selector(clearToken))) }
         menu.addItem(submenu("Animated Artwork", motion))
+        menu.addItem(action("Start Standby", #selector(startStandby)))
 
         menu.addItem(.separator())
         menu.addItem(toggle("Launch at Login", SMAppService.mainApp.status == .enabled, #selector(toggleLogin)))
@@ -97,6 +98,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(action("Quit Islet", #selector(quit), key: "q"))
     }
+
+    @objc private func startStandby() { StandbyController.shared?.start(manually: true) }
 
     // MARK: - Builders
 
