@@ -56,6 +56,7 @@ struct FullPlayerView: View {
     let store: PlayerStore
     var topInset: CGFloat = 0
     var showsClock = false
+    @Environment(\.clickRouter) private var router
 
     var body: some View {
         if model.isPresented {
@@ -97,7 +98,8 @@ struct FullPlayerView: View {
                     .scaleEffect(store.isPlaying || !open ? 1 : 0.9)
                     .offset(x: cover.minX, y: cover.minY)
                     .animation(IslandMotion.playful, value: store.isPlaying)
-                    .onTapGesture { toggleLyrics() }
+                    .onTapGesture(perform: ClickRouter.guarded(router, "player.cover", toggleLyrics))
+                    .routedClick("player.cover", enabled: open, action: toggleLyrics)
 
                 // 3. Controls and lyrics fade in once the hero is under way.
                 PlayerControls(store: store, model: model)
@@ -123,6 +125,7 @@ struct FullPlayerView: View {
                 }
 
                 closeButton
+                    .routedClick("player.close", enabled: open) { model.close() }
                     .offset(x: 26, y: 26)
                     .opacity(open ? 1 : 0)
                     .animation(IslandMotion.quick.delay(open ? 0.2 : 0), value: open)
@@ -133,7 +136,9 @@ struct FullPlayerView: View {
     }
 
     private var closeButton: some View {
-        Button { model.close() } label: {
+        // Routed: the lock screen's panel never activates the app, and a plain button there
+        // misses clicks while the lyrics keep redrawing.
+        Button(action: ClickRouter.guarded(router, "player.close") { model.close() }) {
             Image(systemName: "chevron.down").font(.system(size: 17, weight: .semibold))
         }
         .buttonStyle(GlassIconButtonStyle(diameter: 44, look: .glass))
@@ -185,6 +190,11 @@ struct PlaybackOptionsRow: View {
 struct PlayerControls: View {
     let store: PlayerStore
     @Bindable var model: FullPlayerModel
+    @Environment(\.clickRouter) private var router
+
+    private func toggleLyrics() {
+        withAnimation(IslandMotion.panel) { model.showLyrics.toggle() }
+    }
 
     var body: some View {
         GlassContainer(spacing: 18) {
@@ -201,14 +211,13 @@ struct PlayerControls: View {
                     .lineLimit(1)
                     .shadow(color: .black.opacity(0.18), radius: 6, y: 1)
                     Spacer(minLength: 8)
-                    Button {
-                        withAnimation(IslandMotion.panel) { model.showLyrics.toggle() }
-                    } label: {
+                    Button(action: ClickRouter.guarded(router, "player.lyrics", toggleLyrics)) {
                         Image(systemName: model.showLyrics ? "quote.bubble.fill" : "quote.bubble")
                             .font(.system(size: 16, weight: .semibold))
                             .contentTransition(.symbolEffect(.replace))
                     }
                     .buttonStyle(GlassIconButtonStyle(diameter: 42, look: .glass))
+                    .routedClick("player.lyrics", action: toggleLyrics)
                     .help("Lyrics (L)")
                 }
                 .padding(.bottom, 16)

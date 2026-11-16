@@ -172,7 +172,7 @@ enum Page: Int, CaseIterable {
         case .feel: "Sliders click through detents like a dial on your trackpad. Drag this one."
         case .player: "Click the artwork in the island for the full-screen player, with synced lyrics. In Fisheye, click the cover and it tucks into the corner while the lyrics take the stage; click it again to bring it back."
         case .wordLyrics: "Each word lights up as it's sung. Fisheye swells the word being sung, and icons can rise over words like \"fire\" or \"night\". Pick a style in Music & Lyrics → Lyrics."
-        case .screenLyrics: "Lock your Mac while music plays: the album cover fills the lock screen and big lyrics roll past a word at a time, in its colors. Change it in Music & Lyrics → On Screen."
+        case .screenLyrics: "Lock your Mac while music plays: the album cover fills the lock screen and big lyrics roll past a word at a time, in its colors. Click the arrow in the top-left corner to hide them until the next lock. Change it in Music & Lyrics → On Screen."
         case .edgeGlow: "While a song plays, a soft light runs around the edges of your screen in the colors of its cover. Make it wider, pick your own colors, or wrap it around the notch in Music & Lyrics → Edge Glow."
         case .wallLyrics: "A second look for the big lyrics: the last few lines on a wall drifting in 3D, each word popping in as it's sung. Pick Wall in Music & Lyrics → On Screen."
         case .glowBeat: "Turn on Pulse to the beat and the edge glow flares with the bass of whatever's playing."

@@ -28,6 +28,24 @@ final class ScreenLyricsController {
         return panel
     }()
     private var hideTask: Task<Void, Never>?
+    /// Closed with its button: the lyrics stay off the lock screen until the next lock.
+    private var dismissedOnLock = false
+    /// The close button, in its own small window so the full-screen lyrics can keep ignoring
+    /// the mouse (and never get between a click and the password field).
+    private lazy var closePanel: NSPanel = {
+        let panel = IslandPanel(size: CGSize(width: 44, height: 44))
+        panel.identifier = NSUserInterfaceItemIdentifier("screenLyrics.close")
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3)
+        panel.canBecomeVisibleWithoutLogin = true
+        panel.ignoresMouseEvents = false
+        let router = ClickRouter()
+        let host = FirstMouseHostingView(rootView: LockLyricsCloseButton { [weak self] in self?.dismissOnLock() }
+            .environment(\.clickRouter, router))
+        host.clickRouter = router
+        host.sizingOptions = []
+        panel.contentView = host
+        return panel
+    }()
     private var awakeAssertion = IOPMAssertionID(0)
     private var holdingAwake = false
     private var lyrics: LyricsState = .idle
@@ -62,6 +80,7 @@ final class ScreenLyricsController {
 
     func stop() {
         hideTask?.cancel()
+        closePanel.orderOut(nil)
         desktopPanel.orderOut(nil)
         lockPanel.orderOut(nil)
         keepAwake(false)
@@ -75,7 +94,7 @@ final class ScreenLyricsController {
 
     /// Lyrics will fill the lock screen, so it leaves out its player card and motion artwork.
     var fillsLockScreen: Bool {
-        guard settings.screenLyrics, store.hasTrack, store.isPlaying, case .synced = store.lyrics else { return false }
+        guard settings.screenLyrics, !dismissedOnLock, store.hasTrack, store.isPlaying, case .synced = store.lyrics else { return false }
         return true
     }
 
@@ -84,6 +103,7 @@ final class ScreenLyricsController {
 
     private func setLocked(_ isLocked: Bool) {
         locked = isLocked
+        dismissedOnLock = false
         update()
         // loginwindow settles its layout a moment after locking; recentre on it then.
         if isLocked {
@@ -111,7 +131,7 @@ final class ScreenLyricsController {
     /// Whether the lyrics should be on screen now.
     private var wanted: Bool {
         guard settings.screenLyrics, store.hasTrack, store.isPlaying, case .synced = store.lyrics else { return false }
-        return locked || (settings.screenLyricsPlace == .everywhere && !playerVisible)
+        return locked ? !dismissedOnLock : (settings.screenLyricsPlace == .everywhere && !playerVisible)
     }
 
     /// Shows, moves or hides the overlay to match the settings and what's playing.
@@ -151,6 +171,7 @@ final class ScreenLyricsController {
             }
             model.isVisible = true
             fillingLockScreen = locked
+            showCloseButton(locked, on: screen)
             keepAwake(settings.screenLyricsKeepAwake)
         } else if panel.isVisible, hideTask == nil {
             // Pausing for a moment, or the gap between songs, shouldn't blink the lyrics away.
@@ -160,6 +181,7 @@ final class ScreenLyricsController {
                 self.hideTask = nil
                 self.model.isVisible = false
                 self.fillingLockScreen = false
+                self.showCloseButton(false)
                 self.keepAwake(false)
                 // Unless it was asked back while fading.
                 self.fade(panel, to: 0) { [weak self] in
@@ -169,6 +191,7 @@ final class ScreenLyricsController {
         } else if !panel.isVisible {
             model.isVisible = false
             fillingLockScreen = false
+            showCloseButton(false)
             keepAwake(false)
         }
         if !locked { fillingLockScreen = false }
@@ -191,6 +214,35 @@ final class ScreenLyricsController {
         } else {
             model.centerOffset = height * 0.06
         }
+    }
+
+    /// The lyrics step aside at once (no pause-grace fade), and the widgets and player card
+    /// come back in their place.
+    private func dismissOnLock() {
+        guard locked else { return }
+        dismissedOnLock = true
+        hideTask?.cancel()
+        hideTask = nil
+        model.isVisible = false
+        fillingLockScreen = false
+        showCloseButton(false)
+        keepAwake(false)
+        fade(lockPanel, to: 0) { [weak self] in
+            if self?.model.isVisible == false { self?.lockPanel.orderOut(nil) }
+        }
+    }
+
+    private func showCloseButton(_ show: Bool, on screen: NSScreen? = nil) {
+        guard show, let screen else {
+            if closePanel.isVisible { closePanel.orderOut(nil) }
+            return
+        }
+        // Top-left, where the full-screen player keeps its close button.
+        closePanel.setFrameOrigin(CGPoint(x: screen.frame.minX + 26, y: screen.frame.maxY - 26 - 44))
+        guard !closePanel.isVisible else { return }
+        closePanel.alphaValue = 1
+        closePanel.orderFrontRegardless()
+        space?.attach(closePanel)
     }
 
     // MARK: - Display sleep
@@ -229,5 +281,23 @@ final class ScreenLyricsController {
         } completionHandler: {
             MainActor.assumeIsolated { done?() }
         }
+    }
+}
+
+/// The lock-screen lyrics' close button: the same glass chevron as the full-screen player.
+private struct LockLyricsCloseButton: View {
+    let close: () -> Void
+
+    var body: some View {
+        RoutedButton("lyrics.close", action: close) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.2), lineWidth: 0.5))
+        }
+        .help("Hide lyrics")
+        .environment(\.colorScheme, .dark)
     }
 }
