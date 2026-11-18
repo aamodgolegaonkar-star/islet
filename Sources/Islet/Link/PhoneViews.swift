@@ -378,7 +378,7 @@ struct PhonePageView: View {
                              help: link.ringing ? "Stop ringing" : "Ring your phone", id: "phone.ring", action: link.ringPhone)
             if LinkUSB.adbPath != nil {
                 IslandPillButton(label: link.mirror.running ? "Stop" : "Mirror", symbol: "rectangle.portrait.on.rectangle.portrait.fill",
-                                 help: link.mirror.running ? "Stop mirroring" : "Use your phone on this Mac (USB)", id: "phone.mirror",
+                                 help: link.mirror.running ? "Stop mirroring" : "Use your phone on this Mac", id: "phone.mirror",
                                  action: link.mirror.toggle)
             }
             action("Send Files…", symbol: "paperplane.fill", id: "phone.files", run: link.chooseFilesToSend)

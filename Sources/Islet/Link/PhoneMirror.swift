@@ -20,6 +20,9 @@ final class PhoneMirror {
     @ObservationIgnored private var feed: MirrorFeed?
     @ObservationIgnored private var window: MirrorWindow?
     @ObservationIgnored private var adb: String?
+    /// The adb device: the cable's serial, or host:port over Wi-Fi.
+    @ObservationIgnored private var serial: String?
+    @ObservationIgnored private var wireless = false
 
     nonisolated static let port: UInt16 = 47490
 
@@ -41,7 +44,7 @@ final class PhoneMirror {
         guard running else { return }
         state = .idle
         feed?.send(MirrorFeed.stop)
-        let feed = feed, server = server, adb = adb
+        let feed = feed, server = server, adb = adb, serial = serial, wireless = wireless
         self.feed = nil
         self.server = nil
         window?.close()
@@ -51,12 +54,36 @@ final class PhoneMirror {
             try? await Task.sleep(for: .milliseconds(600))
             feed?.close()
             if server?.isRunning == true { server?.terminate() }
-            if let adb { _ = await LinkUSB.run(adb, ["forward", "--remove", "tcp:\(Self.port)"]) }
+            guard let adb, let serial else { return }
+            _ = await LinkUSB.run(adb, ["-s", serial, "forward", "--remove", "tcp:\(Self.port)"])
+            if wireless { _ = await LinkUSB.run(adb, ["disconnect", serial]) }
         }
     }
 
     private func connect(adb: String, window: MirrorWindow) async {
-        let listing = await LinkUSB.run(adb, ["shell", "pm", "path", "local.islet.link"])
+        // The cable if it's plugged in; otherwise Wi-Fi, at the address saved when it last was.
+        let devices = await LinkUSB.run(adb, ["devices"]).text.split(separator: "\n").dropFirst()
+            .map { $0.split(whereSeparator: \.isWhitespace) }
+        if let usb = devices.first(where: { $0.count >= 2 && $0[1] == "device" && !$0[0].contains(":") }) {
+            serial = String(usb[0])
+            wireless = false
+        } else if let host = LinkUSB.wirelessHost {
+            window.message = "Connecting over Wi-Fi…"
+            let target = "\(host):\(LinkUSB.wirelessPort)"
+            let result = await LinkUSB.run(adb, ["connect", target])
+            guard state == .connecting else { return }
+            guard result.text.contains("connected to") else {
+                fail("Couldn't find your phone on Wi-Fi. Make sure it's on the same network as this Mac, or plug it in (it also turns Wi-Fi mirroring back on after the phone restarts).")
+                return
+            }
+            serial = target
+            wireless = true
+        } else {
+            fail("Plug your phone in once with USB debugging on. After that, mirroring works over Wi-Fi too.")
+            return
+        }
+        guard let serial else { return }
+        let listing = await LinkUSB.run(adb, ["-s", serial, "shell", "pm", "path", "local.islet.link"])
         // The APK's path changes with every install, so it's looked up each time.
         guard state == .connecting else { return }
         guard let path = listing.text.split(separator: "\n").first(where: { $0.hasPrefix("package:") }).map({ String($0.dropFirst(8)) }) else {
@@ -66,13 +93,15 @@ final class PhoneMirror {
         }
         // A fresh socket name per session, so no other app on the phone can reach the server.
         let socket = "islet-mirror-\(UUID().uuidString.prefix(8).lowercased())"
-        _ = await LinkUSB.run(adb, ["forward", "tcp:\(Self.port)", "localabstract:\(socket)"])
+        _ = await LinkUSB.run(adb, ["-s", serial, "forward", "tcp:\(Self.port)", "localabstract:\(socket)"])
         let mac = (Host.current().localizedName ?? "your Mac").replacingOccurrences(of: "'", with: "'\\''")
         let process = Process()
         process.executableURL = URL(filePath: adb)
         // nohup: if the cable or adb goes first, the server outlives it, sees its socket close,
         // and still tidies up and locks the phone.
-        process.arguments = ["shell", "CLASSPATH=\(path) nohup app_process / local.islet.link.mirror.Server 0 0 0 12000000 \(socket) '\(mac)' >/dev/null 2>&1"]
+        // Wi-Fi gets a lighter stream; the phone also has to stay awake without the cable's power.
+        let bitrate = wireless ? 8_000_000 : 12_000_000
+        process.arguments = ["-s", serial, "shell", "ISLET_WIRELESS=\(wireless ? 1 : 0) CLASSPATH=\(path) nohup app_process / local.islet.link.mirror.Server 0 0 0 \(bitrate) \(socket) '\(mac)' >/dev/null 2>&1"]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         process.terminationHandler = { [weak self] _ in Task { @MainActor in self?.ended() } }

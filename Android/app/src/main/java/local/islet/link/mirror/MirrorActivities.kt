@@ -154,8 +154,9 @@ class MirrorLockActivity : ComponentActivity() {
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(true)
         if (intent.getBooleanExtra("done", false)) { finish(); return }
-        // Mirroring runs over USB: unplugged, it's over, so this page must never be left behind.
-        registerReceiver(unlocked, IntentFilter(Intent.ACTION_POWER_DISCONNECTED))
+        // Over USB, unplugging ends it, so this page must never be left behind. (Over Wi-Fi the
+        // server closes it, and the charger has nothing to do with mirroring.)
+        if (!intent.getBooleanExtra("wireless", false)) registerReceiver(unlocked, IntentFilter(Intent.ACTION_POWER_DISCONNECTED))
         val mac = intent.getStringExtra("mac") ?: LinkManager.get(this).pairedMacName
         // Stays on (plugged in), saying the phone is in use, but dimmed to almost nothing after a moment.
         Handler(Looper.getMainLooper()).postDelayed({

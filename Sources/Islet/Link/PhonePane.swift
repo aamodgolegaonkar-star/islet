@@ -73,7 +73,7 @@ struct PhonePane: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Phone Mirroring")
-                        Text("Use your phone in a window on this Mac: click to tap, scroll, and type with the keyboard. ⌘1 goes home, ⌘[ goes back. While it's mirrored the phone shows that it's in use; using it ends mirroring and locks it. Plug the phone in over USB, unlocked.")
+                        Text("Use your phone in a window on this Mac: click to tap, scroll, and type with the keyboard. ⌘1 goes home, ⌘[ goes back. While it's mirrored the phone shows that it's in use; using it ends mirroring and locks it. Start with the phone unlocked. Plug it in once (and again after it restarts) and it also works over Wi-Fi.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     Spacer()

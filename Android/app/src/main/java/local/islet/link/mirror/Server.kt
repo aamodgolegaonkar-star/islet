@@ -128,6 +128,18 @@ object Server {
     fun requestStop() { running = false }
 
     private var stayOn: String? = null
+    private var timeout: String? = null
+    private val wireless = System.getenv("ISLET_WIRELESS") == "1"
+    /** The phone's own settings, kept while a session runs (the shell can write here). */
+    private const val RESTORE = "/data/local/tmp/islet-mirror-restore"
+
+    private fun restoreLeftovers() {
+        val file = java.io.File(RESTORE)
+        val lines = runCatching { file.readLines() }.getOrNull() ?: return
+        lines.getOrNull(0)?.takeIf { it.isNotBlank() }?.let { Shell.run("settings", "put", "global", "stay_on_while_plugged_in", it) }
+        lines.getOrNull(1)?.takeIf { it.isNotBlank() }?.let { Shell.run("settings", "put", "system", "screen_off_timeout", it) }
+        file.delete()
+    }
 
     private fun start(width: Int, height: Int, dpi: Int, bitrate: Int, out: DataOutputStream, macName: String) {
         // A locked phone can't be mirrored (see above): wait for it to be unlocked.
@@ -167,13 +179,19 @@ object Server {
         out.flush()
         thread(name = "encode") { encode(codec, out) }
 
-        // Plugged in over USB, the phone stays awake for the session (restored at the end), so it
-        // never times out into the lock screen; its own screen just goes dark.
+        // The phone stays awake for the session, so it never times out into the lock screen (which
+        // would lock the mirror): plugged in, by staying on while charging; over Wi-Fi, with a long
+        // screen timeout. Both are put back at the end, or at the next session if this one crashed.
+        restoreLeftovers()
         stayOn = Shell.output("settings", "get", "global", "stay_on_while_plugged_in")
+        timeout = Shell.output("settings", "get", "system", "screen_off_timeout")
+        runCatching { java.io.File(RESTORE).writeText("${stayOn.orEmpty()}\n${timeout.orEmpty()}") }
         Shell.run("settings", "put", "global", "stay_on_while_plugged_in", "7")
+        if (wireless) Shell.run("settings", "put", "system", "screen_off_timeout", "14400000")
         // The mirrored phone opens on its own home screen; the real one shows that it's in use.
         Shell.run("am", "start", "--display", "$displayId", "-n", "local.islet.link/.mirror.MirrorHome")
-        Shell.run("am", "start", "--display", "0", "-n", "local.islet.link/.mirror.MirrorLockActivity", "--es", "mac", macName)
+        Shell.run("am", "start", "--display", "0", "-n", "local.islet.link/.mirror.MirrorLockActivity", "--es", "mac", macName,
+                  "--ez", "wireless", "$wireless")
 
     }
 
@@ -233,6 +251,8 @@ object Server {
         runCatching { codec?.release() }
         codec = null
         stayOn?.let { Shell.run("settings", "put", "global", "stay_on_while_plugged_in", it.ifBlank { "0" }) }
+        if (wireless) timeout?.let { Shell.run("settings", "put", "system", "screen_off_timeout", it) }
+        runCatching { java.io.File(RESTORE).delete() }
         Shell.run("am", "start", "--display", "0", "-n", "local.islet.link/.mirror.MirrorLockActivity", "--ez", "done", "true")
         // Mirroring ends with the phone locked.
         Shell.displayPower(0, true)

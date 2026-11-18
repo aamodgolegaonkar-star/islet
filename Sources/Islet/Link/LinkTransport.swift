@@ -381,7 +381,7 @@ final class LinkUSB {
             for _ in 0 ..< 20 {
                 try? await Task.sleep(for: .seconds(1.5))
                 guard let self, !Task.isCancelled else { return }
-                if await self.reverse() { return }
+                if await self.reverse() { await self.prepareWireless(); return }
                 try? await Task.sleep(for: .seconds(1.5))
             }
         }
@@ -389,10 +389,35 @@ final class LinkUSB {
 
     private func reverse() async -> Bool {
         guard let adb = Self.adbPath else { return false }
+        // Plugged in, the cable is the one connection: drop any Wi-Fi one (it would make adb ambiguous).
+        _ = await Self.run(adb, ["disconnect"])
         let output = await Self.run(adb, ["reverse", "tcp:\(Link.port)", "tcp:\(Link.port)"])
         forwarding = output.status == 0
         lastResult = output.text
         return forwarding
+    }
+
+    /// Where wireless Phone Mirroring finds the phone: its Wi-Fi address, saved while it was plugged in.
+    static let wirelessPort = 5555
+    static var wirelessHost: String? { UserDefaults.standard.string(forKey: "mirrorWirelessHost") }
+
+    /// Lets Phone Mirroring work over Wi-Fi later: adb listens on the network too (until the
+    /// phone restarts; plugging it in turns it back on). The phone still asks before trusting a
+    /// new computer, as over USB.
+    private func prepareWireless() async {
+        guard let adb = Self.adbPath else { return }
+        let address = await Self.run(adb, ["shell", "ip", "-f", "inet", "addr", "show", "wlan0"]).text
+        if let match = address.firstMatch(of: /inet (\d+\.\d+\.\d+\.\d+)\//) {
+            UserDefaults.standard.set(String(match.1), forKey: "mirrorWirelessHost")
+        }
+        let port = await Self.run(adb, ["shell", "getprop", "service.adb.tcp.port"]).text
+        guard port != "\(Self.wirelessPort)" else { return }
+        _ = await Self.run(adb, ["tcpip", "\(Self.wirelessPort)"])
+        // adb restarts on the phone, which drops the cable's reverse port: set it up again.
+        for _ in 0 ..< 10 {
+            try? await Task.sleep(for: .seconds(1))
+            if await reverse() { return }
+        }
     }
 
     /// Installs the app over USB (Settings → Phone).
