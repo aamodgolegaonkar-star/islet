@@ -166,6 +166,8 @@ final class DebugTools: NSObject {
             // link.fake / link.fake:notification|call|media|pair|transfer|off
             link?.debugFake(command.split(separator: ":").last.map(String.init) ?? "phone")
         case "link.page": island.debugSetPresentation(.phone)
+        case "mirror.start": link?.mirror.start()
+        case "mirror.stop": link?.mirror.stop()
         case "island.close": island.debugSetPresentation(.compact)
         case "portal.sent": portal?.demo(direction: .sent)
         case "portal.edge": portal?.debugEdge(1)

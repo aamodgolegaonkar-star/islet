@@ -70,6 +70,19 @@ struct PhonePane: View {
             appSection
 
             Section {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Phone Mirroring")
+                        Text("Use your phone in a window on this Mac: click to tap, scroll, and type with the keyboard. ⌘1 goes home, ⌘[ goes back. While it's mirrored the phone shows that it's in use; using it ends mirroring and locks it. Plug the phone in over USB, unlocked.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(link.mirror.running ? "Stop" : "Mirror Phone") { link.mirror.toggle() }
+                        .disabled(LinkUSB.adbPath == nil)
+                }
+            }
+
+            Section {
                 Toggle("Show notifications in the island", isOn: $settings.showNotifications)
                 Toggle("Show incoming calls", isOn: $settings.showCalls)
                 Toggle("Pause music during calls", isOn: $settings.pauseForCalls)

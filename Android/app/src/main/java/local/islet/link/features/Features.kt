@@ -46,6 +46,7 @@ import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 import java.util.concurrent.ConcurrentHashMap
 import local.islet.link.R
+import local.islet.link.dot.DotFeed
 import local.islet.link.link.IncomingSink
 import local.islet.link.link.LinkManager
 import local.islet.link.link.LinkService
@@ -169,7 +170,7 @@ object Features {
         if (sentText.remove(sbn.key) != null) LinkManager.get(context).send(Message.of("notif.remove", mapOf("key" to sbn.key)))
     }
 
-    private fun act(context: Context, key: String, index: Int, reply: String?) {
+    internal fun act(context: Context, key: String, index: Int, reply: String?) {
         val sbn = runCatching { NotificationMirror.instance?.activeNotifications }.getOrNull()?.firstOrNull { it.key == key } ?: return
         val action = sbn.notification.actions?.getOrNull(index) ?: return
         val options = if (Build.VERSION.SDK_INT >= 34) {
@@ -363,9 +364,15 @@ class NotificationMirror : NotificationListenerService() {
         if (instance === this) instance = null
     }
 
-    override fun onNotificationPosted(sbn: StatusBarNotification) = Features.posted(this, sbn)
+    override fun onNotificationPosted(sbn: StatusBarNotification, rankingMap: RankingMap?) {
+        Features.posted(this, sbn)
+        DotFeed.posted(this, sbn, rankingMap)
+    }
 
-    override fun onNotificationRemoved(sbn: StatusBarNotification) = Features.removed(this, sbn)
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        Features.removed(this, sbn)
+        DotFeed.removed(sbn)
+    }
 
     companion object {
         @Volatile var instance: NotificationMirror? = null
@@ -380,6 +387,7 @@ class NotificationMirror : NotificationListenerService() {
 object PhoneMedia {
     private var manager: MediaSessionManager? = null
     private var controller: MediaController? = null
+    val current: MediaController? get() = controller
     private var appContext: Context? = null
     private var lastArtTitle: String? = null
 
@@ -425,6 +433,7 @@ object PhoneMedia {
 
     private fun send() {
         val context = appContext ?: return
+        DotFeed.media(context, controller)
         if (!Features.prefs(context).getBoolean("media", true)) return
         val link = LinkManager.get(context)
         val controller = controller

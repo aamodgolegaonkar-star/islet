@@ -639,6 +639,10 @@ fun SettingsScreen(link: LinkManager) {
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = screenPadding) {
         item { ScreenTitle("Settings") }
         item {
+            SectionTitle("Dynamic Dot", Modifier.entrance(1))
+            local.islet.link.dot.DotCard(Modifier.entrance(1))
+        }
+        item {
             SectionTitle("Your Mac", Modifier.entrance(1))
             Card(Modifier.fillMaxWidth().entrance(1)) {
                 Text(link.pairedMacName, style = Islet.heading)

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -210,10 +211,14 @@ fun LevelControl(
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 awaitEachGesture {
-                    val down = awaitFirstDown()
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    // Only a sideways drag adjusts it; up and down scrolls the page past it.
+                    var sideways = 0f
+                    awaitHorizontalTouchSlopOrCancellation(down.id) { change, over -> sideways = over; change.consume() }
+                        ?: return@awaitEachGesture
                     held = true
                     local = value
-                    var raw = value
+                    var raw = value + sideways / size.width
                     var lastStep = (value * 16).toInt()
                     Haptic.gestureStart(view)
                     while (true) {

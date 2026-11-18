@@ -243,8 +243,8 @@ fun IslandHero(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) { if (!reduced) open.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.7f, stiffness = 140f)) }
     Box(modifier.size(280.dp, 140.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.07f), Color.Transparent),
-                                            Offset(size.width / 2, size.height / 2), size.width / 2.2f))
+            drawRect(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.07f), Color.Transparent),
+                                          Offset(size.width / 2, size.height / 2), size.height / 2))
         }
         Box(
             Modifier.size(200.dp, 56.dp)

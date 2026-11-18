@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dot_description">Shows music, calls, notifications and charging in a shape around the front camera. Islet uses this permission only to draw above the status bar and to know which app is open, so music hides inside its own app. It never reads what is on your screen.</string>
+</resources>

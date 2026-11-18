@@ -85,6 +85,8 @@ extension Page {
         case .portalIncoming: ("Portal progress", "arrow.down.circle.fill")
         case .androidPhone: ("Android phone", "smartphone")
         case .androidRemote: ("Phone remote", "hand.point.up.left.fill")
+        case .androidDot: ("Dynamic Dot", "circle.dashed")
+        case .phoneMirroring: ("Phone Mirroring", "rectangle.portrait.on.rectangle.portrait.fill")
         case .lockPlayer: ("Lock player", "rectangle.portrait.on.rectangle.portrait")
         case .aurora: ("Album aurora", "sparkles")
         case .lock: ("Lock screen", "lock.fill")
@@ -1416,6 +1418,104 @@ struct AndroidRemoteDemo: View {
                 withAnimation(IslandMotion.subtle) { level = level > 0.6 ? 0.3 : 0.8 }
                 try? await Task.sleep(for: .seconds(1.4))
                 withAnimation(IslandMotion.quick) { playing.toggle() }
+            }
+        }
+    }
+}
+
+/// The phone's camera dot growing into music, then a notification, then back.
+struct AndroidDotDemo: View {
+    @State private var stage = 0
+
+    var body: some View {
+        let width: CGFloat = stage == 1 ? 74 : stage == 2 ? 112 : 12
+        RoundedRectangle(cornerRadius: 30, style: .continuous)
+            .fill(Color(white: 0.06))
+            .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(.white.opacity(0.2), lineWidth: 1.5))
+            .frame(width: 128, height: 232)
+            .overlay(alignment: .top) {
+                Capsule().fill(.black)
+                    .frame(width: width, height: stage == 0 ? 12 : 20)
+                    .overlay {
+                        HStack {
+                            if stage == 1 {
+                                RoundedRectangle(cornerRadius: 4).fill(.orange.gradient).frame(width: 15, height: 15)
+                                Spacer()
+                                Image(systemName: "waveform").font(.system(size: 10, weight: .bold)).foregroundStyle(.orange)
+                            } else if stage == 2 {
+                                Circle().fill(.green).frame(width: 13, height: 13)
+                                Text("Mom").font(.system(size: 9, weight: .semibold))
+                                Spacer()
+                                Text("Dinner?").font(.system(size: 9)).foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 5)
+                        .transition(.opacity)
+                    }
+                    .padding(.top, 8)
+            }
+            .frame(width: 440, height: 230)
+            .environment(\.colorScheme, .dark)
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1.2))
+                    withAnimation(IslandMotion.open) { stage = (stage + 1) % 3 }
+                }
+            }
+    }
+}
+
+/// A Mac window holding the phone's screen, with the pointer tapping an app; the phone beside it says it's in use.
+struct PhoneMirroringDemo: View {
+    @State private var opened = false
+
+    var body: some View {
+        HStack(spacing: 34) {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color(white: 0.08))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.18), lineWidth: 1))
+                .frame(width: 104, height: 208)
+                .overlay {
+                    ZStack {
+                        LazyVGrid(columns: Array(repeating: GridItem(.fixed(18), spacing: 8), count: 3), spacing: 10) {
+                            ForEach(0 ..< 9, id: \.self) { index in
+                                RoundedRectangle(cornerRadius: 5).fill(Color(hue: Double(index) / 9, saturation: 0.55, brightness: 0.85))
+                                    .frame(width: 18, height: 18)
+                            }
+                        }
+                        .opacity(opened ? 0 : 1)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.orange.gradient)
+                            .padding(4)
+                            .scaleEffect(opened ? 1 : 0.2, anchor: .topLeading)
+                            .opacity(opened ? 1 : 0)
+                        Image(systemName: "cursorarrow").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                            .offset(x: -24, y: -60)
+                    }
+                }
+                .overlay(alignment: .top) {
+                    HStack(spacing: 4) { ForEach(0 ..< 3, id: \.self) { _ in Circle().fill(.white.opacity(0.35)).frame(width: 6, height: 6) } }
+                        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            VStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.black)
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.2), lineWidth: 1.5))
+                    .frame(width: 74, height: 148)
+                    .overlay {
+                        VStack(spacing: 6) {
+                            Image(systemName: "laptopcomputer").font(.system(size: 18)).foregroundStyle(.white.opacity(0.8))
+                            Text("Phone in use").font(.system(size: 8, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
+                        }
+                    }
+                Text("Your phone").font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .frame(width: 440, height: 230)
+        .environment(\.colorScheme, .dark)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.6))
+                withAnimation(IslandMotion.open) { opened.toggle() }
             }
         }
     }

@@ -99,6 +99,8 @@ final class LinkController {
     @ObservationIgnored private let tcp = LinkTCPListener()
     @ObservationIgnored private let bluetooth = LinkBluetooth()
     @ObservationIgnored let usb = LinkUSB()
+    /// Phone Mirroring (USB): the phone in a window, used with this Mac's pointer and keyboard.
+    let mirror = PhoneMirror()
     @ObservationIgnored private var sessions: [LinkSession] = []
     @ObservationIgnored private var pairingSession: LinkSession?
     @ObservationIgnored private var icons: [String: NSImage] = [:]
@@ -346,6 +348,9 @@ final class LinkController {
             if let text = fields["text"] as? String { portal?.receiveText(text, from: session.phoneName) }
         case "find":
             LinkRemote.ring()
+        case "mirror.stop":
+            // "Stop Mirroring" on the phone, or the phone was picked up.
+            mirror.stop()
         case "unpair":
             if let device = devices.first(where: { $0.id == session.phoneID }) { forget(device) }
         default:

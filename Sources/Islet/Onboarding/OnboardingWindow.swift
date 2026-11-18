@@ -98,7 +98,7 @@ final class OnboardingController {
 /// the full tutorial shows every page, and after updating, "What's New" shows the new ones.
 enum Page: Int, CaseIterable {
     case welcome, whatsNew
-    case island, swipeSkip, scrollingTitles, islandWeather, outOfTheWay, motion, colors, corners, feel, player, wordLyrics, screenLyrics, wallLyrics, edgeGlow, glowBeat, activities, focus, levels, controls, sound, perAppEQ, shelf, portal, portalIncoming, androidPhone, androidRemote, webPlayers, lock, lockWidgets, lockCustomize, lockPlayer, aurora, standby, faceID, agents
+    case island, swipeSkip, scrollingTitles, islandWeather, outOfTheWay, motion, colors, corners, feel, player, wordLyrics, screenLyrics, wallLyrics, edgeGlow, glowBeat, activities, focus, levels, controls, sound, perAppEQ, shelf, portal, portalIncoming, androidPhone, androidRemote, phoneMirroring, androidDot, webPlayers, lock, lockWidgets, lockCustomize, lockPlayer, aurora, standby, faceID, agents
     case done
 
     /// The full tutorial, in order.
@@ -125,6 +125,7 @@ enum Page: Int, CaseIterable {
         case .wallLyrics, .glowBeat: "1.9.0"
         case .swipeSkip, .outOfTheWay, .portal, .faceID, .motion, .colors, .standby: "2.0"
         case .focus, .scrollingTitles, .islandWeather, .corners, .perAppEQ, .portalIncoming, .lockPlayer, .aurora, .androidPhone, .androidRemote: "2.1"
+        case .androidDot, .phoneMirroring: "2.2"
         }
     }
 
@@ -141,6 +142,8 @@ enum Page: Int, CaseIterable {
         case .portalIncoming: "Watch it come through"
         case .androidPhone: "Your Android phone, in the island"
         case .androidRemote: "Your phone runs your Mac"
+        case .androidDot: "A Dynamic Dot on your phone"
+        case .phoneMirroring: "Your phone, in a window"
         case .lockPlayer: "Your lock-screen player"
         case .aurora: "An aurora from your album"
         case .outOfTheWay: "Out of the way when you want"
@@ -183,6 +186,8 @@ enum Page: Int, CaseIterable {
         case .perAppEQ: "Give Apple Music and Spotify each their own equalizer curve: turn on Separate for Apple Music and Spotify in Music & Lyrics → Sound."
         case .androidPhone: "Install Islet on your Android phone and pair it in Settings → Android Phone. Its notifications and calls appear in the island, with Reply, Answer and Decline. The round button beside the open island shows the phone's battery and opens the phone page."
         case .androidRemote: "Your Mac's music plays on the phone's lock screen with its controls. The app is a trackpad, keyboard and slide clicker for the Mac, and sends files at full quality over USB, Wi-Fi or Bluetooth."
+        case .phoneMirroring: "Plug your Android phone in and choose Mirror on the phone page. It opens in a window: click to tap, scroll, and type with your keyboard. ⌘1 goes home. The phone shows it's in use; picking it up ends mirroring and locks it."
+        case .androidDot: "The Islet app can turn your phone's front camera into an island too. Music shows its art and level bars, and calls, notifications and charging grow out of the camera. Tap it for controls, swipe up to close. Turn it on in the app's Settings → Dynamic Dot."
         case .portalIncoming: "When your iPhone sends something big, the portal opens on the right edge of your screen and widens as it comes in, then closes as it lands."
         case .lockPlayer: "Move the lock-screen player higher or lower, pick which display it's on, and keep the display awake while music plays. Settings → Lock Screen → Player."
         case .aurora: "Songs without motion artwork fill the lock screen with their cover, turned, mirrored and flowing like an aurora, and it crossfades to the next song's."
@@ -387,6 +392,8 @@ private struct PageView: View {
         case .portalIncoming: PortalIncomingDemo()
         case .androidPhone: AndroidPhoneDemo()
         case .androidRemote: AndroidRemoteDemo()
+        case .androidDot: AndroidDotDemo()
+        case .phoneMirroring: PhoneMirroringDemo()
         case .lockPlayer: LockPlayerDemo()
         case .aurora: AuroraDemo()
         case .focus: FocusDemo()

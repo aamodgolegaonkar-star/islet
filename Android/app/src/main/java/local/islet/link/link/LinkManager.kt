@@ -433,6 +433,10 @@ class LinkManager(private val context: Context) : Connection.Listener {
                 if (host != null && !host.contains(':')) {
                     val mac = FoundMac(id, resolved.serviceName, host, resolved.port)
                     _found.value = _found.value.filterNot { it.id == id || it.name == mac.name } + mac
+                    // Our Mac just (re)appeared: connect now rather than on the next tick.
+                    if (id == pairedMacId && active?.transport.let { it == null || it == Transport.BLUETOOTH }) {
+                        dialTcp(host, resolved.port, Transport.WIFI)
+                    }
                 }
                 synchronized(lock) { done = true; lock.notifyAll() }
             }
