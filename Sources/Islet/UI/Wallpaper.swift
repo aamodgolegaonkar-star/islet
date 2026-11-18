@@ -15,6 +15,8 @@ struct WallpaperContext: Equatable, @unchecked Sendable {
 
 extension EnvironmentValues {
     @Entry var wallpaper: WallpaperContext? = nil
+    /// Islet's own aurora or motion artwork is behind: glass bends that, not a wallpaper copy.
+    @Entry var liveBackdrop = false
 }
 
 /// Crops of the desktop picture for overlay windows. A 4K picture decoded in full costs

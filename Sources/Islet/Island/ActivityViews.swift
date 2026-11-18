@@ -310,3 +310,123 @@ struct TimerDoneContent: View {
         .onAppear { ring += 1 }
     }
 }
+
+/// A Focus mode turning on or off: its icon in its colour, its name, and On or Off, with the
+/// icon dropping in and the state rolling up like a reel.
+struct FocusContent: View {
+    let mode: FocusMode
+    let on: Bool
+    /// Beside a notch the name won't fit in a wing: icon left, state right.
+    var besideNotch = false
+    @State private var shown = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: mode.displaySymbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(on ? mode.color : .white.opacity(0.45))
+                .frame(width: 24, height: 24)
+                .background(Circle().fill((on ? mode.color : .white).opacity(on ? 0.22 : 0.1)))
+                .scaleEffect(shown ? 1 : 0.4)
+                .symbolEffect(.bounce, value: shown)
+            if !besideNotch {
+                Text(mode.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Text(on ? "On" : "Off")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(on ? mode.color : .white.opacity(0.55))
+                .offset(y: shown ? 0 : 14)
+                .opacity(shown ? 1 : 0)
+        }
+        .padding(.horizontal, 10)
+        .clipped()
+        .onAppear {
+            withAnimation(IslandMotion.reduced ? nil : .spring(response: 0.45, dampingFraction: 0.62).delay(0.08)) { shown = true }
+        }
+    }
+}
+
+extension FocusMode {
+    /// Focus uses a few private symbols (Work's lanyard, Gaming's rocket): their public
+    /// look-alikes, or the moon.
+    var displaySymbol: String {
+        if NSImage(systemSymbolName: symbol, accessibilityDescription: nil) != nil { return symbol }
+        let alike = ["person.lanyardcard.fill": "lanyardcard.fill", "rocket.fill": "gamecontroller.fill",
+                     "apple.mindfulness": "figure.mind.and.body"][symbol]
+        return alike.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil ? $0 : nil } ?? "moon.fill"
+    }
+
+    /// The mode's system colour by its name ("systemTealColor"), as Focus shows it.
+    var color: Color {
+        let name = tint.replacingOccurrences(of: "system", with: "").replacingOccurrences(of: "Color", with: "").lowercased()
+        return switch name {
+        case "red": .red
+        case "orange": .orange
+        case "yellow": .yellow
+        case "green": .green
+        case "mint": .mint
+        case "teal": .teal
+        case "cyan": .cyan
+        case "blue": .blue
+        case "purple": .purple
+        case "pink": .pink
+        case "brown": .brown
+        case "gray", "grey": .gray
+        default: .indigo
+        }
+    }
+}
+
+/// The open island's weather page: now, big, and the next six hours.
+struct IslandWeatherPage: View {
+    let report: WeatherService.Report
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: report.symbol)
+                    .symbolRenderingMode(.multicolor)
+                    .font(.system(size: 30))
+                    .frame(width: 40)
+                Text("\(report.temperature)°")
+                    .font(.system(size: 38, weight: .light, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                Spacer(minLength: 6)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(report.condition.isEmpty ? " " : report.condition)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Text([report.place, "H:\(report.high)°  L:\(report.low)°"].compactMap { $0 }.joined(separator: "  ·  "))
+                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                .lineLimit(1)
+            }
+            if !report.hours.isEmpty {
+                HStack(spacing: 0) {
+                    ForEach(report.hours) { hour in
+                        VStack(spacing: 5) {
+                            Text(hour.time, format: .dateTime.hour())
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.55))
+                            Image(systemName: hour.symbol)
+                                .symbolRenderingMode(.multicolor)
+                                .font(.system(size: 15))
+                                .frame(height: 17)
+                            Text("\(hour.temperature)°")
+                                .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(.white)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}

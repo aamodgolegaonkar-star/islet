@@ -94,6 +94,27 @@ final class PortalEdge {
         controller?.edgeTick()
     }
 
+    /// Something is on its way from a phone: the portal opens on the edge and widens with
+    /// the upload, then closes as it lands (the island shows what came through).
+    func incoming(from phone: String, progress: Double?) {
+        guard !dragging, let screen = NSScreen.screens.first else { return }
+        guard let progress else {
+            guard state.incoming != nil else { return }
+            state.incoming = nil
+            withAnimation(IslandMotion.playful) { state.swallowed = true }
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(600))
+                guard let self, !self.dragging, self.state.incoming == nil else { return }
+                self.hide()
+            }
+            return
+        }
+        state.swallowed = false
+        state.incoming = "From \(phone) · \(Int((progress * 100).rounded()))%"
+        showVisual(on: screen)
+        withAnimation(IslandMotion.quick) { state.near = 0.4 + 0.6 * progress }
+    }
+
     func debugShow(_ near: CGFloat) {
         guard let screen = NSScreen.screens.first else { return }
         if near <= 0 { return hide() }
@@ -157,6 +178,8 @@ final class EdgeState {
     var near: CGFloat = 0
     /// Just took a drop: flare and close.
     var swallowed = false
+    /// "From iPhone · 40%" while something comes in from a phone.
+    var incoming: String?
 }
 
 /// Draws only: drags and clicks go to the drop view underneath.
@@ -252,8 +275,8 @@ struct EdgePortalView: View {
                         }
                     }
                     .blendMode(.plusLighter)
-                    if near > 0.55 {
-                        Label("Send to iPhone", systemImage: "iphone.gen3")
+                    if near > 0.55 || state.incoming != nil {
+                        Label(state.incoming ?? "Send to iPhone", systemImage: state.incoming == nil ? "iphone.gen3" : "arrow.down.circle.fill")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12)

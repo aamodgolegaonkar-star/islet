@@ -30,12 +30,23 @@ public struct StandbyConditions: Sendable {
         self.systemTimeout = systemTimeout
     }
 
+    /// No wait is ever shorter: until then nothing else is worth reading.
+    public static let shortestWait: TimeInterval = 15
+
     /// The idle wait actually used: the chosen minutes, or 20 s before macOS's own timeout
-    /// when that comes sooner (never under 15 s).
+    /// when that comes sooner (never under `shortestWait`).
     public var waitSeconds: TimeInterval {
         let chosen = Double(idleMinutes * 60)
         guard let systemTimeout, systemTimeout > 0 else { return chosen }
-        return min(chosen, max(systemTimeout - 20, 15))
+        return min(chosen, max(systemTimeout - 20, Self.shortestWait))
+    }
+
+    /// Seconds until it's worth looking again: idle time only grows until someone touches
+    /// the Mac, so Standby can't start before the wait runs out. Blocked or off, a slow look.
+    public var nextCheck: TimeInterval {
+        guard enabled, onPower else { return 30 }
+        let remaining = waitSeconds - idleSeconds
+        return remaining > 0 ? min(max(remaining, 1), 120) : 30
     }
 
     public var shouldStart: Bool {

@@ -21,6 +21,8 @@ final class PortalController {
     var isRunning: Bool { server != nil && problem == nil }
 
     @ObservationIgnored let settings: AppSettings
+    /// Islet Link, when an Android phone is connected: true if it took the items.
+    @ObservationIgnored var sendThroughLink: (([URL], String?) -> Bool)?
     @ObservationIgnored private weak var island: IslandController?
     @ObservationIgnored private var server: PortalServer?
     @ObservationIgnored private lazy var edge = PortalEdge(controller: self)
@@ -58,6 +60,9 @@ final class PortalController {
             onPaired: { device in Task { @MainActor [weak self] in self?.paired(device) } },
             onState: { problem in Task { @MainActor [weak self] in self?.problem = problem } })
         let known = devices, effect = settings.portalEffect.rawValue
+        server.onIncoming = { name, progress in
+            Task { @MainActor [weak self] in self?.edge.incoming(from: name, progress: progress) }
+        }
         server.devices.withLock { $0 = known }
         server.effect.withLock { $0 = effect }
         server.start()
@@ -132,7 +137,7 @@ final class PortalController {
         }
     }
 
-    private func receiveFile(_ temporary: URL, name: String, from device: String) {
+    func receiveFile(_ temporary: URL, name: String, from device: String) {
         let folder = settings.portalSaveFolder
         let manager = FileManager.default
         try? manager.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -162,7 +167,7 @@ final class PortalController {
                preview: Self.preview(of: destination, type: type), symbol: "doc.fill")
     }
 
-    private func receiveText(_ text: String, from device: String) {
+    func receiveText(_ text: String, from device: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         if let link = portalOpenableLink(text) {
@@ -187,6 +192,11 @@ final class PortalController {
 
     /// Puts files, text or a link in the portal for the phone.
     func send(files: [URL], text: String?) {
+        // An Android phone on Islet Link takes it straight away, at full quality.
+        if sendThroughLink?(files, text) == true {
+            hapticBurst()
+            return
+        }
         guard let server else { return }
         var queued: [PortalOutboxItem] = []
         for url in files where (try? url.checkResourceIsReachable()) == true {

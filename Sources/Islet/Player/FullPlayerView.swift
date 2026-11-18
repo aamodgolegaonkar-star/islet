@@ -120,7 +120,9 @@ struct FullPlayerView: View {
                         .offset(x: layout.lyrics.minX, y: layout.lyrics.minY)
                         .opacity(open ? 1 : 0)
                         .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .offset(x: 70)).animation(IslandMotion.panel.delay(0.08)),
+                            // The lines come into focus as the cover settles.
+                            insertion: .opacity.combined(with: .offset(x: 70)).combined(with: .focusing)
+                                .animation(IslandMotion.panel.delay(0.12)),
                             removal: .opacity.combined(with: .offset(x: 40)).animation(IslandMotion.quick)))
                 }
 
@@ -201,10 +203,10 @@ struct PlayerControls: View {
             VStack(spacing: 0) {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(store.title)
+                        MarqueeText(text: store.title)
                             .font(.system(size: 21, weight: .semibold))
                             .foregroundStyle(.white)
-                        Text(store.subtitle)
+                        MarqueeText(text: store.subtitle)
                             .font(.system(size: 18, weight: .regular))
                             .foregroundStyle(.white.opacity(0.66))
                     }
@@ -233,5 +235,17 @@ struct PlayerControls: View {
                 VolumeRow(store: store)
             }
         }
+    }
+}
+
+private struct FocusBlur: ViewModifier {
+    let radius: CGFloat
+    func body(content: Content) -> some View { content.blur(radius: radius) }
+}
+
+private extension AnyTransition {
+    /// From soft to sharp.
+    static var focusing: AnyTransition {
+        .modifier(active: FocusBlur(radius: 14), identity: FocusBlur(radius: 0))
     }
 }

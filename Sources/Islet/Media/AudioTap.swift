@@ -88,7 +88,12 @@ final class AudioTapEngine {
         if let running, running.wants == wants, running.processes == processes, running.output == output { return }
         teardown()
         guard active, !processes.isEmpty, output != kAudioObjectUnknown,
-              let outputUID = AudioOutputs.string(output, kAudioDevicePropertyDeviceUID) else { return }
+              let outputUID = AudioOutputs.string(output, kAudioDevicePropertyDeviceUID) else {
+            // Torn down: the analysis timer goes with it, rather than reading a dead tap 30
+            // times a second.
+            updateAnalysis()
+            return
+        }
         if build(processes: processes, outputUID: outputUID, wants: wants) {
             running = (wants, processes, output)
             Log.media.notice("Audio tap on \(wants.target ?? "", privacy: .public): eq \(wants.equalizer) levels \(wants.levels)")
@@ -500,26 +505,37 @@ final class SpectrumAnalyser {
 }
 
 /// The bar heights views draw, and who's watching (the tap runs only while someone is).
+/// Views take each frame through `listen`, straight into their layers: frames never pass
+/// through SwiftUI, which would lay the whole island out 30 times a second.
 @MainActor
 @Observable
 final class WaveformLevels {
     static let shared = WaveformLevels()
-    private(set) var levels: [Float] = []
+    @ObservationIgnored private(set) var levels: [Float] = []
     /// Bars on screen right now; the engine samples audio only while there are some.
     @ObservationIgnored var onViewersChanged: () -> Void = {}
     @ObservationIgnored private(set) var viewers = 0 {
         didSet { if (viewers > 0) != (oldValue > 0) { onViewersChanged() } }
     }
 
-    var isLive: Bool { !levels.isEmpty }
+    /// Frames are arriving. Changes only when the tap starts or stops.
+    private(set) var isLive = false
     /// Every new frame of levels, for listeners that need each one (the edge glow's beat).
     @ObservationIgnored var onFrame: (([Float]) -> Void)?
+    @ObservationIgnored private var listeners: [ObjectIdentifier: ([Float]) -> Void] = [:]
 
     func set(_ new: [Float]) {
         levels = new
+        if !isLive { isLive = true }
         onFrame?(new)
+        for listener in listeners.values { listener(new) }
     }
-    func clear() { if !levels.isEmpty { levels = [] } }
+    func clear() {
+        levels = []
+        if isLive { isLive = false }
+    }
     func appeared() { viewers += 1 }
     func disappeared() { viewers = max(0, viewers - 1) }
+    func listen(_ owner: AnyObject, _ frame: @escaping ([Float]) -> Void) { listeners[ObjectIdentifier(owner)] = frame }
+    func stopListening(_ owner: AnyObject) { listeners[ObjectIdentifier(owner)] = nil }
 }

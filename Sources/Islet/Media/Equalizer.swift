@@ -53,7 +53,7 @@ enum Equalizer {
     }
 }
 
-enum EqualizerPreset: String, CaseIterable, Identifiable {
+enum EqualizerPreset: String, CaseIterable, Identifiable, Codable {
     case flat, bassBoost, bassReducer, trebleBoost, vocal, rock, pop, electronic, acoustic, lateNight
 
     var id: String { rawValue }

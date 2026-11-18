@@ -15,13 +15,16 @@ final class SettingsController {
     private let updater: SPUUpdater
     private let portal: PortalController
     private let faceID: FaceIDController
+    private let link: LinkController
     private var window: NSWindow?
     private var closeObserver: NSObjectProtocol?
 
     init(settings: AppSettings, sounds: LockSoundPlayer, islandChanged: @escaping () -> Void,
          previewIsland: @escaping (Bool) -> Void, showTutorial: @escaping () -> Void,
-         sourceChanged: @escaping () -> Void, updater: SPUUpdater, portal: PortalController, faceID: FaceIDController) {
+         sourceChanged: @escaping () -> Void, updater: SPUUpdater, portal: PortalController, faceID: FaceIDController,
+         link: LinkController) {
         self.portal = portal
+        self.link = link
         self.faceID = faceID
         self.sourceChanged = sourceChanged
         self.updater = updater
@@ -52,7 +55,7 @@ final class SettingsController {
         let view = SettingsView(
             settings: settings, sounds: sounds,
             islandChanged: islandChanged, previewIsland: previewIsland, sourceChanged: sourceChanged,
-            updater: updater, portal: portal, faceID: faceID,
+            updater: updater, portal: portal, faceID: faceID, link: link,
             showTutorial: { [weak self] in
                 self?.window?.close()
                 self?.showTutorial()
@@ -79,7 +82,7 @@ final class SettingsController {
 
 /// The sections of the Settings window, listed in its sidebar.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case island, appearance, activities, shelf, portal, music, haptics, lockScreen, standby, faceID, agents, general
+    case island, appearance, activities, shelf, portal, phone, music, haptics, lockScreen, standby, faceID, agents, general
 
     var id: String { rawValue }
 
@@ -91,6 +94,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .activities: "Live Activities"
         case .shelf: "File Shelf"
         case .portal: "Portal"
+        case .phone: "Android Phone"
         case .music: "Music & Lyrics"
         case .haptics: "Haptics"
         case .lockScreen: "Lock Screen"
@@ -108,6 +112,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .activities: "waveform"
         case .shelf: "tray.full.fill"
         case .portal: "iphone.radiowaves.left.and.right"
+        case .phone: "smartphone"
         case .music: "music.note"
         case .haptics: "hand.tap.fill"
         case .lockScreen: "lock.fill"
@@ -127,6 +132,7 @@ struct SettingsView: View {
     let updater: SPUUpdater
     let portal: PortalController
     let faceID: FaceIDController
+    let link: LinkController
     let showTutorial: () -> Void
 
     @AppStorage("settingsPane") private var paneName = SettingsPane.island.rawValue
@@ -201,6 +207,7 @@ struct SettingsView: View {
             case .activities: activitiesPane
             case .shelf: shelfPane
             case .portal: portalPane
+            case .phone: PhonePane(link: link)
             case .music: musicPane
             case .haptics: hapticsPane
             case .lockScreen: lockPane
@@ -237,6 +244,11 @@ struct SettingsView: View {
                     .animation(IslandMotion.quick, value: readout)
             }
         }
+    }
+
+    var lockOffsetLabel: String {
+        let points = Int(settings.lockPlayerOffset.rounded())
+        return abs(points) < 4 ? "Centred" : points < 0 ? "\(-points) pt higher" : "\(points) pt lower"
     }
 
     var transparencyLabel: String {

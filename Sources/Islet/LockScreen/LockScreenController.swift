@@ -1,4 +1,6 @@
+import IsletCore
 import AppKit
+import IOKit.pwr_mgt
 import Observation
 import SwiftUI
 
@@ -15,6 +17,9 @@ final class LockModel {
     var weather: WeatherService.Report?
     var headphones: HeadphoneStatus?
     var cpuLoad: Double?
+    var focus: FocusMode?
+    /// The aurora or motion artwork fills the screen behind the widgets.
+    var backdropCovered = false
     var widgetsWallpaper: WallpaperContext?
     var playerWallpaper: WallpaperContext?
     /// Artwork frames in their own windows (top-left coordinates), reported by the views.
@@ -43,12 +48,13 @@ final class LockScreenController {
 
     private let store: PlayerStore
     private let settings: AppSettings
-    private var observers: [DistributedObserver] = []
+    private var lockSignal: LockSignal?
     private var space: SkyLightSpace? { SkyLightSpace.shared }
     private var onLockScreen = false
     private var presentTask: Task<Void, Never>?
     private var batteryTimer: Timer?
     private var cpuTimer: Timer?
+    private var sleepObservers: [NSObjectProtocol] = []
     private let cpu = CPULoadSampler()
     private var layout: LockLayout?
     /// Bumped on every present/dismiss, so a late fade-out can't hide a newer presentation.
@@ -86,10 +92,7 @@ final class LockScreenController {
         self.store = store
         self.settings = settings
         sounds = LockSoundPlayer(settings: settings)
-        observers = [
-            DistributedObserver("com.apple.screenIsLocked") { [weak self] _ in self?.didLock() },
-            DistributedObserver("com.apple.screenIsUnlocked") { [weak self] _ in self?.didUnlock() },
-        ]
+        lockSignal = LockSignal { [weak self] locked in locked ? self?.didLock() : self?.didUnlock() }
         isLocked = Self.screenIsLockedNow()
         Log.lock.info("Lock-screen space available: \(self.space != nil)")
 
@@ -103,6 +106,12 @@ final class LockScreenController {
         }
         model.collapse = { [weak self] in self?.collapse() }
         failureWatcher.onFailure = { [weak self] in self?.authenticationFailed() }
+        let center = NSWorkspace.shared.notificationCenter
+        for (name, asleep) in [(NSWorkspace.screensDidSleepNotification, true), (NSWorkspace.screensDidWakeNotification, false)] {
+            sleepObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.displaysSlept(asleep) }
+            })
+        }
         albumModel.close = { [weak self] in self?.collapse() }
     }
 
@@ -142,7 +151,7 @@ final class LockScreenController {
 
     /// Moves the pieces if loginwindow's clock or login panel turned out elsewhere.
     private func relayout() {
-        guard model.isPresented, !model.isAlbumOpen, let screen = NSScreen.screens.first else { return }
+        guard model.isPresented, !model.isAlbumOpen, let screen = targetScreen else { return }
         let next = makeLayout(screen: screen, onLockScreen: onLockScreen)
         guard next.widgets != layout?.widgets || next.player != layout?.player else { return }
         layout = next
@@ -160,14 +169,47 @@ final class LockScreenController {
 
     private func makeLayout(screen: NSScreen, onLockScreen: Bool) -> LockLayout {
         LockLayout(screen: screen, loginWindows: onLockScreen ? LockLayout.loginWindowFrames() : [],
-                   clockBottom: SystemClock.isAvailable ? SystemClock.clockBottom(screenHeight: screen.frame.height) : nil)
+                   clockBottom: SystemClock.isAvailable ? SystemClock.clockBottom(screenHeight: screen.frame.height) : nil,
+                   playerOffset: settings.lockPlayerOffset)
+    }
+
+    /// The display picked in Settings → Lock Screen, or the main one (also when it's unplugged).
+    private var targetScreen: NSScreen? {
+        NSScreen.screens.first { !settings.lockDisplay.isEmpty && $0.localizedName == settings.lockDisplay }
+            ?? NSScreen.screens.first
+    }
+
+    // MARK: - Keep the display awake
+
+    private var awakeAssertion: IOPMAssertionID = 0
+
+    /// Holds the display on while the widgets are up, per Settings → Lock Screen; follows
+    /// play and pause while they're up.
+    private func updateKeepAwake() {
+        let mode: Bool = switch settings.lockKeepAwake {
+        case .off: false
+        case .whilePlaying: store.isPlaying
+        case .always: true
+        }
+        let wanted = isLocked && model.isPresented && onLockScreen && mode
+        if wanted, awakeAssertion == 0 {
+            IOPMAssertionCreateWithName(kIOPMAssertPreventUserIdleDisplaySleep as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn),
+                                        "Islet lock screen" as CFString, &awakeAssertion)
+        } else if !wanted, awakeAssertion != 0 {
+            IOPMAssertionRelease(awakeAssertion)
+            awakeAssertion = 0
+        }
+        guard model.isPresented else { return }
+        withObservationTracking { _ = store.isPlaying; _ = settings.lockKeepAwake } onChange: {
+            Task { @MainActor [weak self] in self?.updateKeepAwake() }
+        }
     }
 
     /// Builds the windows (and measures the clock) ahead of the first lock, so it shows at once.
     func prepare() {
         guard settings.lockWidgetEnabled, space != nil else { return }
         _ = (widgetsPanel, playerPanel, islandPanel, motionPanel)
-        if let screen = NSScreen.screens.first, SystemClock.isAvailable {
+        if let screen = targetScreen, SystemClock.isAvailable {
             _ = SystemClock.clockBottom(screenHeight: screen.frame.height)
         }
     }
@@ -211,11 +253,11 @@ final class LockScreenController {
     /// brings back the widgets, player card and motion artwork they stand in for.
     func lyricsFillChanged(_ filling: Bool) {
         guard model.isPresented, onLockScreen, !model.isAlbumOpen, let layout,
-              let screen = NSScreen.screens.first else { return }
+              let screen = targetScreen else { return }
         if filling {
             for panel in [widgetsPanel, playerPanel, motionPanel] where panel.isVisible { panel.orderOut(nil) }
         } else {
-            if settings.lockMotionBackground, !motionPanel.isVisible { show(motionPanel, at: screen.frame) }
+            if settings.lockMotionBackground || settings.lockAurora, !motionPanel.isVisible { show(motionPanel, at: screen.frame) }
             if !widgetsPanel.isVisible { show(widgetsPanel, at: layout.widgets) }
             if store.hasTrack, !playerPanel.isVisible { show(playerPanel, at: layout.player) }
         }
@@ -224,7 +266,7 @@ final class LockScreenController {
     // MARK: - Presentation
 
     private func present(onLockScreen: Bool) {
-        guard let screen = NSScreen.screens.first else { return }
+        guard let screen = targetScreen else { return }
         self.onLockScreen = onLockScreen
         let layout = makeLayout(screen: screen, onLockScreen: onLockScreen)
         self.layout = layout
@@ -241,6 +283,7 @@ final class LockScreenController {
         }
         model.clockInset = layout.clockInset
         model.isPresented = true
+        updateKeepAwake()
         model.isAlbumOpen = false
         albumModel.isOpen = false
         albumModel.isPresented = false
@@ -249,7 +292,7 @@ final class LockScreenController {
 
         // First, so it sits under the widgets in the lock screen's space too.
         let lyrics = lyricsFillLockScreen()
-        if settings.lockMotionBackground, !lyrics {
+        if settings.lockMotionBackground || settings.lockAurora, !lyrics {
             show(motionPanel, at: screen.frame)
         }
 
@@ -273,7 +316,14 @@ final class LockScreenController {
             playerPanel.orderOut(nil)
         }
 
-        batteryTimer?.invalidate()
+        startTimers()
+    }
+
+    /// Battery and CPU readings, while the widgets are up and the display is on.
+    private func startTimers() {
+        stopTimers()
+        // Locked while the display was already off: the wake starts them.
+        guard CGDisplayIsAsleep(CGMainDisplayID()) == 0 else { return }
         batteryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -281,7 +331,25 @@ final class LockScreenController {
                 if self.settings.lockHeadphones { self.model.headphones = HeadphoneStatus.current() }
             }
         }
+        batteryTimer?.tolerance = 5
         startCPU()
+    }
+
+    private func stopTimers() {
+        batteryTimer?.invalidate()
+        batteryTimer = nil
+        cpuTimer?.invalidate()
+        cpuTimer = nil
+    }
+
+    /// Locked with the display off is where a Mac spends its nights: nothing to read then.
+    private func displaysSlept(_ asleep: Bool) {
+        if asleep {
+            stopTimers()
+        } else if model.isPresented, batteryTimer == nil {
+            model.battery = Battery.current()
+            startTimers()
+        }
     }
 
     /// Samples CPU load every few seconds, only while the CPU widget is on screen.
@@ -302,6 +370,7 @@ final class LockScreenController {
                 self.model.cpuLoad = load
             }
         }
+        cpuTimer?.tolerance = 0.5
     }
 
     private func show(_ panel: NSPanel, at frame: CGRect) {
@@ -315,16 +384,21 @@ final class LockScreenController {
     /// `instantly` on a real unlock: the panels sit in a level-400 space above the desktop,
     /// so even a 0.25 s fade showed them over it after loginwindow's shield had gone.
     private func dismiss(instantly: Bool = false) {
-        batteryTimer?.invalidate()
-        batteryTimer = nil
-        cpuTimer?.invalidate()
-        cpuTimer = nil
+        stopTimers()
+        updateKeepAwake()
         generation += 1
         let dismissal = generation
         model.isAlbumOpen = false
         albumModel.isOpen = false
         for panel in [widgetsPanel, playerPanel, albumPanel, islandPanel, motionPanel] where panel.isVisible {
             if instantly { panel.orderOut(nil) } else { fade(panel, to: 0, duration: 0.25) { panel.orderOut(nil) } }
+        }
+        // Everything else living in the lock-screen layer (Face ID's square, its colour flash)
+        // would sit over the desktop too: gone at once on a real unlock.
+        if instantly {
+            for window in NSApp.windows where window.isVisible && window.identifier?.rawValue.hasPrefix("lock.") == true {
+                window.orderOut(nil)
+            }
         }
         // Once faded, drop the content so nothing keeps running behind the desktop.
         Task { @MainActor [weak self] in
@@ -358,7 +432,7 @@ final class LockScreenController {
 
     private func expand(from source: NSWindow, localFrame: CGRect) {
         guard !model.isAlbumOpen, store.hasTrack, source.isVisible, localFrame.width > 1,
-              let screen = NSScreen.screens.first else { return }
+              let screen = targetScreen else { return }
         // Source artwork in screen coordinates, then in the full-screen window's top-left space.
         let art = CGRect(x: source.frame.minX + localFrame.minX, y: source.frame.maxY - localFrame.maxY,
                          width: localFrame.width, height: localFrame.height)
@@ -499,6 +573,9 @@ final class LockScreenController {
                 self.faceHUDPanel.orderOut(nil)
                 Self.withoutAnimation { self.faceHUD.phase = .matched }
             }
+        } else {
+            // Already gone (ordered out at unlock): still stop the scanning ring.
+            Self.withoutAnimation { faceHUD.phase = .matched }
         }
         guard case .faceScan? = islandModel.activity else { return }
         guard !model.isPresented else { return islandModel.activity = .locked }

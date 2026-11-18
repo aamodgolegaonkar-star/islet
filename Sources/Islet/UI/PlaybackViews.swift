@@ -202,49 +202,22 @@ struct EqualizerBars: View {
                 .frame(width: geo.size.width, height: geo.size.height)
             }
         } else {
-            let live = WaveformLevels.shared
-            Group {
-                if isPlaying, live.isLive {
-                    LiveBars(levels: live.levels, color: color)
-                } else {
-                    EqualizerLayers(isPlaying: isPlaying, color: NSColor(color))
-                }
-            }
-            .onAppear { live.appeared() }
-            .onDisappear { live.disappeared() }
-        }
-    }
-}
-
-/// The bars following the music's real loudness in four frequency bands (Settings → Music
-/// → Live waveform), from the audio tap.
-private struct LiveBars: View {
-    var levels: [Float]
-    var color: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            HStack(alignment: .center, spacing: geo.size.width * 0.13) {
-                ForEach(0..<4, id: \.self) { i in
-                    let level = i < levels.count ? CGFloat(levels[i]) : 0
-                    Capsule().fill(color.gradient)
-                        .frame(height: max(geo.size.width * 0.16, geo.size.height * (0.15 + 0.85 * level)))
-                }
-            }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .animation(.linear(duration: 1.0 / 30), value: levels)
+            // `isLive` changes only when the tap starts or stops; the frames themselves go
+            // straight to the layers.
+            EqualizerLayers(isPlaying: isPlaying, live: isPlaying && WaveformLevels.shared.isLive, color: NSColor(color))
         }
     }
 }
 
 private struct EqualizerLayers: NSViewRepresentable {
     var isPlaying: Bool
+    var live: Bool
     var color: NSColor
 
     func makeNSView(context: Context) -> EqualizerView { EqualizerView() }
 
     func updateNSView(_ view: EqualizerView, context: Context) {
-        view.update(isPlaying: isPlaying, color: color,
+        view.update(isPlaying: isPlaying, live: live, color: color,
                     reduceMotion: context.environment.accessibilityReduceMotion,
                     saving: LiveTuning.shared.batterySaving)
     }
@@ -252,6 +225,9 @@ private struct EqualizerLayers: NSViewRepresentable {
 
 /// The equalizer as Core Animation layers: the bounce loops in the render server, so it
 /// costs the app no CPU while music plays, and it stops whenever the window can't be seen.
+/// With the live waveform (Settings → Music) the bars follow the music's real loudness in
+/// four bands instead, each frame handed straight to the layers. Only bars that can be seen
+/// count as watching, so the audio analysis stops while the screen is locked or asleep.
 final class EqualizerView: NSView {
     static let rest: [CGFloat] = [0.3, 0.5, 0.38, 0.26]
     /// Loop length per bar; unequal lengths keep the four from ever falling into step.
@@ -262,12 +238,22 @@ final class EqualizerView: NSView {
 
     private let bars: [CAGradientLayer] = (0..<4).map { _ in CAGradientLayer() }
     private var isPlaying = false
+    private var live = false
     private var reduceMotion = false
     private var saving = false
     private var color: NSColor?
     private var laidOutSize: CGSize = .zero
     /// Whether the loops are running (playing, motion allowed, window on screen).
     private var moving = false
+    /// Following live levels (playing, levels arriving, window on screen).
+    private var following = false
+    /// On screen: counted as watching the levels.
+    private var watching = false {
+        didSet {
+            guard watching != oldValue else { return }
+            if watching { WaveformLevels.shared.appeared() } else { WaveformLevels.shared.disappeared() }
+        }
+    }
     /// Layer time at which the loops began, so a relayout continues them in phase.
     private var loopStart: CFTimeInterval = 0
     private var occlusionObserver: NSObjectProtocol?
@@ -289,7 +275,7 @@ final class EqualizerView: NSView {
     // Taps belong to the SwiftUI views around the bars.
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func update(isPlaying: Bool, color: NSColor, reduceMotion: Bool, saving: Bool) {
+    func update(isPlaying: Bool, live: Bool, color: NSColor, reduceMotion: Bool, saving: Bool) {
         if color != self.color {
             self.color = color
             let top = color.blended(withFraction: 0.14, of: .white) ?? color
@@ -300,24 +286,52 @@ final class EqualizerView: NSView {
         let restChanged = (reduceMotion || self.reduceMotion) && isPlaying != self.isPlaying
         let rateChanged = saving != self.saving && moving
         self.isPlaying = isPlaying
+        self.live = live
         self.reduceMotion = reduceMotion
         self.saving = saving
         refreshMotion(force: restChanged || rateChanged)
     }
 
-    /// Starts or stops the bounce when whether it should run has changed.
+    /// Starts or stops the bounce (or the live levels) when what should run has changed.
     private func refreshMotion(force: Bool = false) {
-        let shouldMove = isPlaying && !reduceMotion && window?.occlusionState.contains(.visible) == true
-        guard shouldMove != moving || force else { return }
+        let visible = window?.occlusionState.contains(.visible) == true
+        watching = visible
+        let shouldFollow = live && visible
+        let shouldMove = isPlaying && !shouldFollow && !reduceMotion && visible
+        guard shouldMove != moving || shouldFollow != following || force else { return }
         moving = shouldMove
-        applyMotion(transition: true)
+        following = shouldFollow
+        if following {
+            for bar in bars { bar.removeAnimation(forKey: "loop") }
+            WaveformLevels.shared.listen(self) { [weak self] levels in self?.show(levels) }
+        } else {
+            WaveformLevels.shared.stopListening(self)
+            applyMotion(transition: true)
+        }
+    }
+
+    /// One frame of live levels: each bar eases to its height over the frame (in the render
+    /// server), so 30 frames a second look continuous.
+    private func show(_ levels: [Float]) {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        for (i, bar) in bars.enumerated() {
+            let level = i < levels.count ? CGFloat(levels[i]) : 0
+            let ease = CABasicAnimation(keyPath: "bounds.size.height")
+            ease.fromValue = bar.presentation()?.bounds.height ?? bar.bounds.height
+            ease.duration = 1.0 / 30
+            bar.bounds.size.height = height(level: 0.15 + 0.85 * level)
+            bar.add(ease, forKey: "live")
+        }
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         occlusionObserver = nil
-        guard let window else { return }
+        guard let window else {
+            refreshMotion()
+            return
+        }
         // Hidden island (screen locked, display asleep): stop, and pick up again on return.
         occlusionObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
@@ -338,7 +352,7 @@ final class EqualizerView: NSView {
             bar.position = CGPoint(x: CGFloat(i) * (width + spacing) + width / 2, y: bounds.midY)
             bar.cornerRadius = width / 2
         }
-        applyMotion(transition: false)
+        if !following { applyMotion(transition: false) }
     }
 
     private func height(level: CGFloat) -> CGFloat {

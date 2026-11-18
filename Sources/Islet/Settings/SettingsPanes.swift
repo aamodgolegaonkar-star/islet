@@ -70,6 +70,8 @@ extension SettingsView {
             Toggle("Open when the pointer rests on it", isOn: $settings.expandOnHover)
             Toggle("Swipe left or right to skip songs", isOn: $settings.swipeToSkip)
             Toggle("Show a small clock when nothing is playing", isOn: $settings.islandClock)
+            Toggle("Weather button in the open island", isOn: $settings.islandWeather)
+                .onChange(of: settings.islandWeather) { _, on in if on { WeatherService.shared.requestAccess() } }
             Picker("Hide a paused song", selection: $settings.hidePausedPlayer) {
                 ForEach(PausedPlayerHide.allCases) { Text($0.title).tag($0) }
             }
@@ -77,7 +79,7 @@ extension SettingsView {
         } header: {
             Text("Behavior")
         } footer: {
-            Text("Swipe with two fingers over the island: left for the next song, right for the previous one. A hidden song comes back as soon as music plays.")
+            Text("Swipe with two fingers over the island: left for the next song, right for the previous one. A hidden song comes back as soon as music plays. The weather button flips the open island to the weather here and for the next six hours; it uses Open-Meteo, and your location if you allow it (otherwise the town your internet address points to).")
         }
     }
 
@@ -122,6 +124,17 @@ extension SettingsView {
         Section {
             Toggle("Dot while the microphone or camera is in use", isOn: $settings.showPrivacyDots)
             Toggle("Warn at 20% and 10% battery", isOn: $settings.showLowBattery)
+        }
+
+        Section {
+            Toggle("Focus mode turning on or off", isOn: $settings.showFocusInIsland)
+            Toggle("Charging and battery", isOn: $settings.focusShowsBattery)
+            Toggle("Headphones", isOn: $settings.focusShowsHeadphones)
+            Toggle("Volume and brightness", isOn: $settings.focusShowsLevels)
+        } header: {
+            Text("Focus")
+        } footer: {
+            Text("Alerts switched off here stay hidden while a Focus mode is on.")
         }
 
         Section("Charging") {
@@ -277,6 +290,13 @@ extension SettingsView {
             }
         } footer: {
             Text("Used for switches and sliders, Portal, Standby and the sidebar. \(settings.accentTheme.title) is on.")
+        }
+        Section {
+            Picker("Round the screen's corners", selection: $settings.screenCorners) {
+                ForEach(ScreenCornerRounding.allCases) { Text($0.title).tag($0) }
+            }
+        } footer: {
+            Text("Rounds off square display corners to match the top of a MacBook screen, on every display and over full-screen apps. They never show up in screenshots.")
         }
     }
 
@@ -435,7 +455,7 @@ extension SettingsView {
             Text("Sound")
         } footer: {
             Text(settings.equalizerEnabled
-                 ? "The equalizer shapes Apple Music and Spotify. The live waveform makes the island's bars follow the music. Both need Audio Recording access the first time; nothing is recorded or saved."
+                 ? "The equalizer shapes Apple Music and Spotify, with one curve for both or one each. The live waveform makes the island's bars follow the music. Both need Audio Recording access the first time; nothing is recorded or saved."
                  : "The live waveform makes the island's bars follow the music. It needs Audio Recording access the first time; nothing is recorded or saved.")
         }
 
@@ -531,13 +551,34 @@ extension SettingsView {
             Toggle("Show the island and player on the lock screen", isOn: $settings.lockWidgetEnabled.animation(reveal))
             if settings.lockWidgetEnabled {
                 Toggle("Motion artwork behind the widgets", isOn: $settings.lockMotionBackground)
+                Toggle("Album aurora when there's no motion artwork", isOn: $settings.lockAurora)
             }
         } footer: {
             if settings.lockWidgetEnabled {
-                Text("Motion artwork needs the Apple Music token in Music & Lyrics.")
+                Text("Motion artwork needs the Apple Music token in Music & Lyrics. The aurora fills the lock screen with the song's cover, flowing slowly; in Low Power Mode it draws fewer frames.")
             }
         }
         if settings.lockWidgetEnabled {
+            Section {
+                sliderRow("Player position", value: $settings.lockPlayerOffset, in: AppSettings.lockPlayerOffsetRange,
+                          low: "Higher", high: "Lower", readout: lockOffsetLabel)
+                if NSScreen.screens.count > 1 || !settings.lockDisplay.isEmpty {
+                    Picker("Display", selection: $settings.lockDisplay) {
+                        Text("Main Display").tag("")
+                        ForEach(NSScreen.screens.map(\.localizedName), id: \.self) { Text($0).tag($0) }
+                        if !settings.lockDisplay.isEmpty, !NSScreen.screens.contains(where: { $0.localizedName == settings.lockDisplay }) {
+                            Text("\(settings.lockDisplay) (not connected)").tag(settings.lockDisplay)
+                        }
+                    }
+                }
+                Picker("Keep the display awake", selection: $settings.lockKeepAwake) {
+                    ForEach(LockKeepAwake.allCases) { Text($0.title).tag($0) }
+                }
+            } header: {
+                Text("Player")
+            } footer: {
+                Text("Keeping the display awake stops the lock screen from dimming and sleeping, so the player and lyrics stay up. It uses more battery.")
+            }
             Section {
                 LockWidgetsEditor(settings: settings)
             } header: {

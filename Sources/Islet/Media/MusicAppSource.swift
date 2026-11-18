@@ -11,8 +11,10 @@ final class MusicAppSource {
     var onEvent: ((AdapterEvent) -> Void)?
 
     private var timer: Timer?
+    private var interval: TimeInterval = 1.5
     private var observer: DistributedObserver?
     private var polling = false
+    private var pollAgain = false
     private var lastPersistentID: String?
     private var artwork: Data?
     private var artworkRevision = 10_000
@@ -29,13 +31,14 @@ final class MusicAppSource {
     end tell
     """
 
-    /// Music announces changes itself; the timer is only a safety net (slow when Music is
-    /// the chosen source, quicker as the emergency fallback).
+    /// Music announces changes itself; the timer is only a safety net for drift while a song
+    /// plays (slow when Music is the chosen source, quicker as the emergency fallback). Each
+    /// look starts an `osascript`, so none while paused: Music says when it plays again.
     func start(pollInterval: TimeInterval = 1.5) {
-        timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.poll() }
-        }
-        timer?.tolerance = pollInterval * 0.2
+        interval = pollInterval
+        // Started again (to hold Music on screen): one timer, at the new pace.
+        timer?.invalidate()
+        timer = nil
         observer = DistributedObserver("com.apple.Music.playerInfo") { [weak self] note in
             // Music's last word as it quits is "Stopped"; asking it anything then relaunches it.
             if note.userInfo?["Player State"] as? String == "Stopped" { self?.handle("STOPPED") } else { self?.poll() }
@@ -99,10 +102,13 @@ final class MusicAppSource {
     }
 
     private func poll() {
-        guard !polling else { return }
+        // Asked again mid-read (Music announced a change): read once more afterwards, or a
+        // play announced during a "paused" read would be missed and nothing would poll.
+        guard !polling else { pollAgain = true; return }
         // Never launch Music just to ask what it is playing. When the running-apps list says
         // it's gone but a song is showing, the script confirms (that list can lag at launch).
         guard musicIsRunning || lastPersistentID != nil else {
+            setPlaying(false)
             onEvent?(.nothingPlaying)
             return
         }
@@ -111,6 +117,10 @@ final class MusicAppSource {
             let output = await Self.osascript(Self.stateScript)
             self.polling = false
             self.handle(output)
+            if self.pollAgain {
+                self.pollAgain = false
+                self.poll()
+            }
         }
     }
 
@@ -120,6 +130,7 @@ final class MusicAppSource {
         guard let output else { return }
         guard output != "STOPPED" else {
             lastPersistentID = nil
+            setPlaying(false)
             onEvent?(.nothingPlaying)
             return
         }
@@ -132,6 +143,7 @@ final class MusicAppSource {
             fetchArtwork()
         }
         let playing = fields[0] == "playing"
+        setPlaying(playing)
         onEvent?(.update(NowPlayingSnapshot(
             title: fields[2], artist: fields[3], album: fields[4],
             duration: number(fields[5]), elapsed: number(fields[1]), timestamp: Date(),
@@ -140,6 +152,19 @@ final class MusicAppSource {
             artwork: artwork, artworkRevision: artworkRevision,
             uniqueIdentifier: persistentID
         )))
+    }
+
+    /// The drift check runs only while music plays.
+    private func setPlaying(_ playing: Bool) {
+        if !playing {
+            timer?.invalidate()
+            timer = nil
+        } else if timer == nil {
+            timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.poll() }
+            }
+            timer?.tolerance = interval * 0.2
+        }
     }
 
     private func fetchArtwork() {

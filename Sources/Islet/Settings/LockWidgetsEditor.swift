@@ -1,3 +1,4 @@
+import IsletCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -299,6 +300,9 @@ struct LockWidgetSample: View {
             circle(WorldClockTile(zone: TimeZone(identifier: settings.worldClockZone) ?? .current))
         case .cpu:
             circle(CPURing(load: 0.35))
+        case .focus:
+            circle(FocusTile(mode: FocusMode(identifier: "com.apple.focus.work", name: "Work",
+                                             symbol: "person.lanyardcard.fill", tint: "systemTealColor")))
         }
     }
 

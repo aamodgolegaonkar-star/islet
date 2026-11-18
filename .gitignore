@@ -13,3 +13,12 @@ Vendor/mediaremote-adapter/
 xcuserdata/
 .swiftpm/
 CLAUDE.local.md
+
+# Android app: build output and the signing key stay local
+Android/.gradle/
+Android/.kotlin/
+Android/build/
+Android/app/build/
+Android/local.properties
+Android/keystore/
+Android/IsletLink.apk

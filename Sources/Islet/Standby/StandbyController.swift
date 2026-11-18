@@ -42,16 +42,38 @@ final class StandbyController {
         self.store = store
     }
 
-    /// Checks every few seconds whether Standby should start. Cheap: one idle-time read.
+    /// Looks whether Standby should start, then sleeps until the soonest moment it could:
+    /// a few wakeups per idle stretch rather than one every few seconds.
     func begin() {
-        schedulePoll(every: 10)
+        schedulePoll(after: 10)
+        // Standby is for a screen someone might look at. Once the display sleeps it ends
+        // (input would end it on wake anyway) and nothing is checked until the display
+        // wakes: no polling through the night.
+        let center = NSWorkspace.shared.notificationCenter
+        displayObservers = [
+            center.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.stop()
+                    self?.pollTimer?.invalidate()
+                    self?.pollTimer = nil
+                }
+            },
+            center.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.schedulePoll(after: 10) }
+            },
+        ]
     }
 
-    private func schedulePoll(every interval: TimeInterval) {
+    private var displayObservers: [NSObjectProtocol] = []
+
+    /// `repeating`: the quick input watch while Standby is up; otherwise one look, after which
+    /// `poll` picks the next.
+    private func schedulePoll(after interval: TimeInterval, repeating: Bool = false) {
         pollTimer?.invalidate()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: repeating) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
+        pollTimer?.tolerance = repeating ? 0.05 : min(interval * 0.1, 5)
     }
 
     private func poll() {
@@ -65,16 +87,31 @@ final class StandbyController {
             }
             return
         }
+        let next = check()
+        // Started: `start` set up the input watch.
+        if !isShowing { schedulePoll(after: next) }
+    }
+
+    /// Starts Standby if it's time; otherwise returns how long until the next look. The cheap facts
+    /// come first: the power-assertion list and `pmset` are read only once the Mac has sat
+    /// idle and unlocked on its charger for at least the shortest wait.
+    private func check() -> TimeInterval {
+        guard settings.standbyEnabled, Self.onPower else { return 30 }
+        let idle = Self.idleSeconds
+        guard idle >= StandbyConditions.shortestWait else { return max(StandbyConditions.shortestWait - idle, 1) }
+        // Locked (often for the night): a slow look, and nothing costly.
+        if LockScreenController.screenIsLockedNow() { return 60 }
         let conditions = StandbyConditions(
-            enabled: settings.standbyEnabled, onPower: Self.onPower, idleSeconds: Self.idleSeconds,
+            enabled: true, onPower: true, idleSeconds: idle,
             idleMinutes: settings.standbyIdleMinutes,
             sinceDismissed: dismissedAt == .distantPast ? nil : Date().timeIntervalSince(dismissedAt),
             screenLocked: LockScreenController.screenIsLockedNow(),
             displayAsleep: CGDisplayIsAsleep(CGMainDisplayID()) != 0,
             otherAppHoldsDisplay: Self.otherAppKeepsDisplayAwake,
             systemTimeout: Self.systemTimeout)
-        guard conditions.shouldStart else { return }
+        guard conditions.shouldStart else { return conditions.nextCheck }
         start(manually: false)
+        return conditions.nextCheck
     }
 
     private var manual = false
@@ -116,7 +153,8 @@ final class StandbyController {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
-        schedulePoll(every: 0.25)
+        refreshTimer?.tolerance = 5
+        schedulePoll(after: 0.25, repeating: true)
         Log.island.info("Standby started (\(manually ? "by hand" : "idle on power"))")
     }
 
@@ -129,7 +167,7 @@ final class StandbyController {
             IOPMAssertionRelease(assertion)
             assertion = 0
         }
-        schedulePoll(every: 10)
+        schedulePoll(after: 10)
         if let previousApp, previousApp != .current { previousApp.activate() }
         previousApp = nil
         NSAnimationContext.runAnimationGroup { context in
@@ -225,9 +263,9 @@ final class StandbyController {
 
     /// The display-sleep setting for the power source in use (Standby only runs on the
     /// charger, so that one). The API for it is private; `pmset -g` prints it, read at most
-    /// once a minute.
+    /// every ten minutes (it changes only in System Settings).
     private static var displaySleepMinutes: Int? {
-        if let cached = displaySleepCache, Date().timeIntervalSince(cached.read) < 60 { return cached.minutes }
+        if let cached = displaySleepCache, Date().timeIntervalSince(cached.read) < 600 { return cached.minutes }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
         process.arguments = ["-g"]

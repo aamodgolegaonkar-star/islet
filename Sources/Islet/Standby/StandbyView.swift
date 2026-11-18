@@ -9,6 +9,7 @@ struct StandbyView: View {
     let store: PlayerStore
     let settings: AppSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var now = Date()
 
     private var theme: AccentTheme { settings.accentTheme }
 
@@ -46,24 +47,31 @@ struct StandbyView: View {
     // MARK: - Clock
 
     private func clock(height: CGFloat) -> some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let date = context.date
-            VStack(alignment: .leading, spacing: height * 0.01) {
-                Text(date, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
-                    .font(.system(size: height * 0.3, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .tracking(-height * 0.006)
-                    .foregroundStyle(theme.gradient)
-                    .contentTransition(.numericText(countsDown: false))
-                    .animation(IslandMotion.playful, value: Calendar.current.component(.minute, from: date))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                Text(date, format: .dateTime.weekday(.wide).month(.wide).day())
-                    .font(.system(size: height * 0.035, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.leading, height * 0.012)
+        let date = now
+        return VStack(alignment: .leading, spacing: height * 0.01) {
+            Text(date, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+                .font(.system(size: height * 0.3, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .tracking(-height * 0.006)
+                .foregroundStyle(theme.gradient)
+                .contentTransition(.numericText(countsDown: false))
+                .animation(IslandMotion.playful, value: Calendar.current.component(.minute, from: date))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            Text(date, format: .dateTime.weekday(.wide).month(.wide).day())
+                .font(.system(size: height * 0.035, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.6))
+                .padding(.leading, height * 0.012)
+        }
+        .rise(model.shown, order: 0, reduceMotion: reduceMotion)
+        // Wakes on each new minute (not every second: the clock shows no seconds).
+        .task {
+            while !Task.isCancelled {
+                now = Date()
+                let next = Calendar.current.nextDate(after: now, matching: DateComponents(second: 0),
+                                                     matchingPolicy: .nextTime) ?? now.addingTimeInterval(60)
+                try? await Task.sleep(for: .seconds(next.timeIntervalSinceNow + 0.05), tolerance: .milliseconds(200))
             }
-            .rise(model.shown, order: 0, reduceMotion: reduceMotion)
         }
     }
 
@@ -112,9 +120,9 @@ struct StandbyView: View {
                     .scaleEffect(store.isPlaying ? 1 : 0.92)
                     .animation(IslandMotion.playful, value: store.isPlaying)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(store.title)
+                    MarqueeText(text: store.title)
                         .font(.system(size: height * 0.026, weight: .semibold))
-                    Text(store.subtitle)
+                    MarqueeText(text: store.subtitle)
                         .font(.system(size: height * 0.021))
                         .foregroundStyle(.white.opacity(0.6))
                     PlaybackClock(timing: store.timing, steps: 2) { date in
@@ -173,21 +181,39 @@ struct StandbyView: View {
     // MARK: - Background
 
     private func ambient(_ size: CGSize) -> some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { context in
-            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate * 0.04
-            ZStack {
-                ForEach(Array(theme.colors.enumerated()), id: \.offset) { index, color in
-                    let phase = t + Double(index) * 2.1
-                    RadialGradient(colors: [color.opacity(0.22), .clear], center: .center,
-                                   startRadius: 0, endRadius: size.height * 0.55)
-                        .frame(width: size.height * 1.1, height: size.height * 1.1)
-                        .offset(x: cos(phase) * size.width * 0.3, y: sin(phase * 1.3) * size.height * 0.25)
-                }
+        AmbientGlow(colors: theme.colors, size: size, reduceMotion: reduceMotion)
+            .opacity(model.shown ? 1 : 0)
+            .animation(.easeOut(duration: 1.6), value: model.shown)
+    }
+}
+
+/// A few slow, dim glows of the theme. Its own view, so its steps redraw only itself.
+private struct AmbientGlow: View {
+    let colors: [Color]
+    let size: CGSize
+    let reduceMotion: Bool
+    @State private var glow = Date()
+
+    var body: some View {
+        let t = reduceMotion ? 0 : glow.timeIntervalSinceReferenceDate * 0.04
+        ZStack {
+            ForEach(Array(colors.enumerated()), id: \.offset) { index, color in
+                let phase = t + Double(index) * 2.1
+                RadialGradient(colors: [color.opacity(0.22), .clear], center: .center,
+                               startRadius: 0, endRadius: size.height * 0.55)
+                    .frame(width: size.height * 1.1, height: size.height * 1.1)
+                    .offset(x: cos(phase) * size.width * 0.3, y: sin(phase * 1.3) * size.height * 0.25)
             }
-            .frame(width: size.width, height: size.height)
         }
-        .opacity(model.shown ? 1 : 0)
-        .animation(.easeOut(duration: 1.6), value: model.shown)
+        .frame(width: size.width, height: size.height)
+        // The glows drift a few points a second: eight steps a second can't be told from
+        // smooth, and a sleeping task (unlike a TimelineView) wakes only for those.
+        .task(id: reduceMotion) {
+            while !reduceMotion, !Task.isCancelled {
+                glow = Date()
+                try? await Task.sleep(for: .milliseconds(125), tolerance: .milliseconds(25))
+            }
+        }
     }
 }
 

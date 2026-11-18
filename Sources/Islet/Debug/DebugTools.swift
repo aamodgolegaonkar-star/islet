@@ -31,6 +31,7 @@ final class DebugTools: NSObject {
 
     /// Set once Portal and Face ID exist (they start after the debug tools).
     var portal: PortalController?
+    var link: LinkController?
     var faceID: FaceIDController?
 
     init(island: IslandController, player: FullPlayerController, lockScreen: LockScreenController, settings: AppSettings) {
@@ -71,6 +72,9 @@ final class DebugTools: NSObject {
         case "standby.status":
             Log.media.notice("Standby: idle \(StandbyController.idleSeconds, format: .fixed(precision: 0)) s, power \(StandbyController.onPower), other app holds display \(StandbyController.otherAppKeepsDisplayAwake), system timeout \(StandbyController.systemTimeout.map { String(Int($0)) } ?? "never", privacy: .public)")
         case "island.volume": island.showLevel(LevelHUD(kind: .volume, value: 0.62))
+        case "island.focus", "island.focusoff":
+            island.showFocus(FocusMode(identifier: "com.apple.focus.work", name: "Work", symbol: "person.lanyardcard.fill",
+                                       tint: "systemTealColor"), on: command == "island.focus")
         case "island.controls": island.debugSetPresentation(.controls)
         case "island.hover": island.model.isHovered = true
         case "island.targets":
@@ -158,6 +162,11 @@ final class DebugTools: NSObject {
         case "faceid.hide": lockScreen.hideFaceScan()
         case "faceid.test": faceID?.test()
         case "portal.demo": portal?.demo()
+        case let command where command.hasPrefix("link.fake"):
+            // link.fake / link.fake:notification|call|media|pair|transfer|off
+            link?.debugFake(command.split(separator: ":").last.map(String.init) ?? "phone")
+        case "link.page": island.debugSetPresentation(.phone)
+        case "island.close": island.debugSetPresentation(.compact)
         case "portal.sent": portal?.demo(direction: .sent)
         case "portal.edge": portal?.debugEdge(1)
         case "portal.edgehide": portal?.debugEdge(0)

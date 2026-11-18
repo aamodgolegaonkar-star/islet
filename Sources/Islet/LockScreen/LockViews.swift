@@ -13,6 +13,7 @@ extension View {
 private struct LockGlass: ViewModifier {
     let radius: CGFloat
     @Environment(\.isSnapshotRendering) private var snapshot
+    @Environment(\.liveBackdrop) private var live
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -22,7 +23,7 @@ private struct LockGlass: ViewModifier {
             .snapshotSafeGlass(clear ? .identity : .islet, visible: !clear, in: shape)
             .background {
                 ZStack {
-                    WallpaperBackdrop().clipShape(shape)
+                    if !live { WallpaperBackdrop().clipShape(shape) }
                     if clear {
                         // Above the wallpaper so it bends it; unclipped, it draws its own rim.
                         ClearGlass(topRadius: radius, bottomRadius: radius, frost: tuning.clearFrost, inWindow: true)
@@ -57,6 +58,7 @@ struct LockWidgetsRow: View {
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.wallpaper, model.widgetsWallpaper)
+        .environment(\.liveBackdrop, model.backdropCovered)
         .environment(\.colorScheme, .dark)
         .environment(\.appearsActive, true)
         .animation(IslandMotion.subtle, value: settings.lockWidgets)
@@ -175,9 +177,10 @@ struct NowPlayingMini: View {
                 .frame(width: 44, height: 44)
                 .clipShape(.rect(cornerRadius: 10, style: .continuous))
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.miniArtFrame = $0 }
+                .shrinksIntoAlbum(model.isAlbumOpen)
             VStack(alignment: .leading, spacing: 2) {
-                Text(store.title).font(.system(size: 13, weight: .semibold))
-                Text(store.subtitle).font(.system(size: 12)).foregroundStyle(.white.opacity(0.7))
+                MarqueeText(text: store.title).font(.system(size: 13, weight: .semibold))
+                MarqueeText(text: store.subtitle).font(.system(size: 12)).foregroundStyle(.white.opacity(0.7))
                 PlaybackClock(timing: store.timing, steps: 2) { date in
                     let duration = store.duration
                     let fraction = duration > 0 ? store.elapsed(at: date) / duration : 0
@@ -210,6 +213,13 @@ struct LockMotionBackground: View {
     @Bindable var model: LockModel
     let settings: AppSettings
 
+    /// Something opaque is up (motion artwork or the aurora).
+    private var covering: Bool {
+        guard model.isPresented, !model.isAlbumOpen else { return false }
+        let motion = settings.lockMotionBackground && !LiveTuning.shared.batterySaving && (store.motion?.tall ?? store.motion?.square) != nil
+        return motion || (settings.lockAurora && store.hasTrack && store.artwork != nil)
+    }
+
     var body: some View {
         ZStack {
             if model.isPresented, settings.lockMotionBackground, !model.isAlbumOpen, !LiveTuning.shared.batterySaving,
@@ -223,11 +233,27 @@ struct LockMotionBackground: View {
                     }
                     .transition(.opacity)
                     .id(url)
+            } else if model.isPresented, settings.lockAurora, !model.isAlbumOpen, store.hasTrack, let art = store.displayArtwork {
+                // No motion artwork for this song: its colours as an aurora instead.
+                AlbumAurora(artwork: art, song: store.trackChangeCount, animated: !IslandMotion.reduced)
+                    .transition(.opacity)
+            }
+        }
+        // This window sits over loginwindow's own clock: draw the same clock in the same
+        // place on top, as the on-screen lyrics do.
+        .overlay(alignment: .top) {
+            if covering {
+                GeometryReader { geo in
+                    SystemClockView(screenHeight: geo.size.height)
+                        .frame(width: geo.size.width, height: model.clockInset)
+                }
+                .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .animation(.easeInOut(duration: 0.8), value: store.motion?.tall ?? store.motion?.square)
+        .onChange(of: covering, initial: true) { _, now in model.backdropCovered = now }
     }
 }
 
@@ -252,9 +278,10 @@ struct LockPlayerPlatter: View {
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.playerArtFrame = $0 }
                     .onTapGesture { model.expandFromPlayer() }
                     .help("Show artwork")
+                    .shrinksIntoAlbum(model.isAlbumOpen)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(store.title).font(.system(size: 15, weight: .semibold))
-                    Text(store.subtitle).font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
+                    MarqueeText(text: store.title).font(.system(size: 15, weight: .semibold))
+                    MarqueeText(text: store.subtitle).font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
                 }
                 .lineLimit(1)
                 Spacer(minLength: 6)
@@ -272,6 +299,7 @@ struct LockPlayerPlatter: View {
         .lockGlass(cornerRadius: 34)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.wallpaper, model.playerWallpaper)
+        .environment(\.liveBackdrop, model.backdropCovered)
         .environment(\.colorScheme, .dark)
         .environment(\.appearsActive, true)
     }
@@ -290,5 +318,16 @@ struct LockAlbumView: View {
         FullPlayerView(model: player, store: store, topInset: lock.clockInset, showsClock: true)
             .environment(\.colorScheme, .dark)
             .environment(\.appearsActive, true)
+    }
+}
+
+extension View {
+    /// The small cover gives way to the big one growing out of the same spot: it shrinks
+    /// into itself as the album opens (outside the frame readers, which still report the
+    /// resting frame for the hero), and grows back once it has closed.
+    func shrinksIntoAlbum(_ open: Bool) -> some View {
+        scaleEffect(open ? 0.55 : 1)
+            .opacity(open ? 0 : 1)
+            .animation(open ? .easeIn(duration: 0.2) : IslandMotion.playful, value: open)
     }
 }

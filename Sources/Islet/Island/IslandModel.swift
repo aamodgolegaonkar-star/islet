@@ -1,4 +1,5 @@
 import AppKit
+import IsletCore
 import Observation
 import SwiftUI
 
@@ -9,6 +10,8 @@ enum IslandPresentation: Equatable {
     case shelf
     /// Control Center: system switches, volume and brightness.
     case controls
+    /// The Android phone on Islet Link: battery, its music, notifications, actions.
+    case phone
 }
 
 /// Short-lived system events the island shows on its own, like the iPhone.
@@ -36,11 +39,24 @@ enum IslandActivity: Equatable {
     case portal(PortalArrival)
     /// Face ID looking for you on the lock screen.
     case faceScan(FaceScanPhase)
+    /// A Focus mode turned on (`on`) or off.
+    case focus(FocusMode, on: Bool)
+    /// The Android phone: a notification, a call, a pairing code or a file on its way.
+    case phone(PhoneAlert)
 
     /// Activities shown as a card (expanded shape) rather than a pill.
     var isCard: Bool {
         switch self {
-        case .headphones, .agent, .portal: true
+        case .headphones, .agent, .portal, .phone: true
+        default: false
+        }
+    }
+
+    /// Cards with buttons (a phone notification, a call, a coding agent): the pointer on
+    /// them keeps them up, instead of opening the island underneath.
+    var holdsHover: Bool {
+        switch self {
+        case .phone, .agent: true
         default: false
         }
     }
@@ -52,7 +68,7 @@ enum IslandActivity: Equatable {
         case (.charging, .charging?), (.unlocked, .unlocked?), (.locked, .locked?),
              (.lockFailed, .lockFailed?), (.headphones, .headphones?), (.agent, .agent?),
              (.lowBattery, .lowBattery?), (.timerDone, .timerDone?), (.portal, .portal?),
-             (.faceScan, .faceScan?): true
+             (.faceScan, .faceScan?), (.focus, .focus?), (.phone, .phone?): true
         default: false
         }
     }
@@ -157,6 +173,19 @@ struct IslandMetrics: Equatable {
     /// Two rows of switches (below the notch, if any).
     var controlsHeight: CGFloat { (hasNotch ? notchHeight : 0) + 160 }
 
+    /// The phone page (below the notch, if any).
+    var phoneHeight: CGFloat { (hasNotch ? notchHeight : 0) + 196 }
+
+    /// Height of a phone card (below the notch, if any).
+    func phoneAlertHeight(_ alert: PhoneAlert) -> CGFloat {
+        switch alert {
+        case let .notification(note): compactHeight + (note.actions.isEmpty ? 66 : 92)
+        case .call: compactHeight + 70
+        case .pairing: compactHeight + 104
+        case .transfer: compactHeight + 52
+        }
+    }
+
     /// Wide enough for a long name beside three battery rings.
     var headphoneCardWidth: CGFloat { max(expandedSize.width + 24, 400) }
 
@@ -177,13 +206,15 @@ struct IslandMetrics: Equatable {
         case .headphones?: return CGSize(width: headphoneCardWidth, height: compactHeight + 76)
         case .agent?: return CGSize(width: headphoneCardWidth, height: compactHeight + 58)
         case .portal?: return CGSize(width: headphoneCardWidth, height: compactHeight + 84)
-        case .lowBattery?, .timerDone?: return CGSize(width: chargingWidth, height: compactHeight)
+        case let .phone(alert)?: return CGSize(width: headphoneCardWidth, height: phoneAlertHeight(alert))
+        case .lowBattery?, .timerDone?, .focus?: return CGSize(width: chargingWidth, height: compactHeight)
         case nil: break
         }
         switch presentation {
         case .expanded where hasTrack: return expandedSize
         case .shelf: return CGSize(width: expandedSize.width, height: shelfHeight)
         case .controls: return CGSize(width: expandedSize.width, height: controlsHeight)
+        case .phone: return CGSize(width: expandedSize.width, height: phoneHeight)
         default: return CGSize(width: hasTrack ? compactWidth : idleWidth, height: compactHeight)
         }
     }
@@ -191,7 +222,7 @@ struct IslandMetrics: Equatable {
     func cornerRadii(for presentation: IslandPresentation, hasTrack: Bool, activity: IslandActivity? = nil)
         -> (top: CGFloat, bottom: CGFloat) {
         let expanded = (presentation == .expanded && hasTrack && activity == nil) || activity?.isCard == true
-            || ((presentation == .shelf || presentation == .controls) && activity == nil)
+            || ((presentation == .shelf || presentation == .controls || presentation == .phone) && activity == nil)
         // Square top beside a real or emulated notch, so the island reads as the notch hanging from the bezel.
         if hasNotch { return expanded ? (0, 38) : (0, 12) }
         return expanded ? (split ? 36 : 40, split ? 36 : 40) : (compactHeight / 2, compactHeight / 2)
@@ -199,14 +230,24 @@ struct IslandMetrics: Equatable {
 
     /// Everything the island occupies (card plus split controls), in top-left-origin window
     /// coordinates. Used for hover hit-testing.
-    func islandRect(for presentation: IslandPresentation, hasTrack: Bool, activity: IslandActivity? = nil) -> CGRect {
+    func islandRect(for presentation: IslandPresentation, hasTrack: Bool, activity: IslandActivity? = nil,
+                    phoneBubble: Bool = false) -> CGRect {
         let card = size(for: presentation, hasTrack: hasTrack, activity: activity)
         var height = card.height
         if split, presentation == .expanded, hasTrack, activity == nil {
             height += controlsGap + controlsSize.height
         }
-        return CGRect(x: (windowSize.width - card.width) / 2, y: topInset, width: card.width, height: height)
+        let rect = CGRect(x: (windowSize.width - card.width) / 2, y: topInset, width: card.width, height: height)
+        guard phoneBubble, presentation != .compact, activity == nil else { return rect }
+        // The phone button beside the open island counts as part of it.
+        let size = Self.phoneBubbleSize
+        return rect.union(CGRect(x: rect.minX - Self.phoneBubbleGap - size, y: topInset + phoneBubbleY, width: size, height: size))
     }
+
+    static let phoneBubbleSize: CGFloat = 44
+    static let phoneBubbleGap: CGFloat = 10
+    /// Level with the open island's content, below the notch.
+    var phoneBubbleY: CGFloat { (hasNotch ? notchHeight : 0) + 10 }
 }
 
 @MainActor
@@ -223,6 +264,10 @@ final class IslandModel {
     /// False once a paused song has been dropped from the island ("Hide the player when
     /// music pauses"); it comes back when anything plays again.
     var showsTrack = true
+    /// The open island shows the weather page instead of the player.
+    var showsWeather = false
+    /// The latest weather for that page (fetched while the island is open).
+    var weather: WeatherService.Report?
     /// The last unlock was Face ID's, so the unlock animation shows the Face ID mark
     /// instead of the fingerprint.
     var unlockedWithFace = false
@@ -251,10 +296,13 @@ final class IslandModel {
     var isSuppressed = false
     /// Frame of the artwork view in window coordinates (top-left origin).
     var artFrame: CGRect = .zero
+    /// Islet Link, for the phone page, the phone cards and the phone button.
+    @ObservationIgnored var link: LinkController?
     /// Desktop picture behind the panel, for glass styles.
     var wallpaper: WallpaperContext?
 
     @ObservationIgnored var openPlayer: () -> Void = {}
+    @ObservationIgnored var openPhonePage: () -> Void = {}
     @ObservationIgnored var requestExpand: () -> Void = {}
     /// A drag inside the island ended: re-check the pointer (it may have left meanwhile).
     @ObservationIgnored var interactionEnded: () -> Void = {}

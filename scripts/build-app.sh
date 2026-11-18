@@ -47,6 +47,11 @@ cp "$BIN" "$APP/Contents/MacOS/Islet"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Resources/THIRD_PARTY_NOTICES.txt" "$APP/Contents/Resources/"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/"
+# The Android app (built by Android/build-apk.sh), so Settings can install it over USB
+# and phones can download it from the Mac.
+if [ -f "$ROOT/Android/IsletLink.apk" ]; then
+  cp "$ROOT/Android/IsletLink.apk" "$APP/Contents/Resources/IsletLink.apk"
+fi
 # Face ID's face model (SFace), compiled for Core ML.
 xcrun coremlcompiler compile "$ROOT/Resources/Models/SFace.mlpackage" "$APP/Contents/Resources/" > /dev/null
 # Its anti-spoofing models (MiniFASNet), once converted (scripts/convert-minifasnet.py).

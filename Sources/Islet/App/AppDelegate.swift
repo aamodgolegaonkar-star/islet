@@ -17,12 +17,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboarding: OnboardingController!
     private let headphones = HeadphoneMonitor()
     private let privacy = PrivacyMonitor()
+    private let focus = FocusMonitor()
+    private var corners: ScreenCorners?
     /// Sparkle: daily signed-update checks against the GitHub release feed.
     let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: UpdateFeed.shared,
                                                userDriverDelegate: UpdateFeed.shared)
     private var signalSources: [DispatchSourceSignal] = []
     private var captureObserver: NSObjectProtocol?
     private var portal: PortalController!
+    private var link: LinkController!
+    private var settingsPaneObserver: NSObjectProtocol?
     private var faceID: FaceIDController!
 
     /// "Hide from screen recordings": Islet's overlay panels (island, lyrics, glow, player)
@@ -91,6 +95,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         portal = PortalController(settings: settings, island: island)
         portal.start()
         debugTools?.portal = portal
+        link = LinkController(store: store, island: island, portal: portal)
+        island.model.link = link
+        portal.sendThroughLink = { [weak link] files, text in link?.send(files: files, text: text) ?? false }
+        link.start()
+        debugTools?.link = link
         debugTools?.faceID = faceID
         captureObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main
@@ -141,6 +150,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             island?.model.cameraActive = show && camera
         }
         privacy.start()
+        focus.onChange = { [weak island, weak lockScreen, weak settings] mode, ended in
+            island?.focus = mode
+            lockScreen?.model.focus = mode
+            guard settings?.showFocusInIsland == true else { return }
+            if let mode { island?.showFocus(mode, on: true) } else if let ended { island?.showFocus(ended, on: false) }
+        }
+        focus.start()
+        corners = ScreenCorners(settings: settings)
+        corners?.start()
+        island.focus = focus.active
+        lockScreen.model.focus = focus.active
         PowerMonitor.shared.onLow = { [weak island, weak settings] percent in
             guard settings?.showLowBattery == true else { return }
             island?.showLowBattery(percent)
@@ -178,7 +198,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let settings else { return }
                 store?.use(settings.playerSource)
             },
-            updater: updater.updater, portal: portal, faceID: faceID)
+            updater: updater.updater, portal: portal, faceID: faceID, link: link)
+        settingsPaneObserver = NotificationCenter.default.addObserver(
+            forName: .openSettingsPane, object: nil, queue: .main
+        ) { [weak self] note in
+            let pane = note.object as? String
+            MainActor.assumeIsolated {
+                if let pane { UserDefaults.standard.set(pane, forKey: "settingsPane") }
+                self?.settingsWindow.show()
+            }
+        }
         statusMenu.openSettings = { [weak self] in self?.settingsWindow.show() }
         statusMenu.checkForUpdates = { [weak self] in self?.updater.checkForUpdates(nil) }
         statusMenu.whatsNew = { [weak self] in self?.onboarding.showLatest() }
@@ -204,7 +233,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The bars, or the edge glow's beat, are watching.
             let levels = (settings.liveWaveform || settings.edgeGlowBeat) && store.isPlaying
                 && WaveformLevels.shared.viewers > 0
-            AudioTapEngine.shared.setEqualizer(bands: settings.equalizerBands, preamp: settings.equalizerPreamp)
+            let curve = settings.equalizer(for: bundle)
+            AudioTapEngine.shared.setEqualizer(bands: curve.bands, preamp: curve.preamp)
             return AudioTapEngine.Wants(target: bundle, equalizer: equalizer, levels: levels)
         } onChange: {
             Task { @MainActor [weak self] in self?.updateAudioTap() }

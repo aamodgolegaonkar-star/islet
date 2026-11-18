@@ -4,9 +4,34 @@ import SwiftUI
 /// Ten vertical band sliders and a preamp, like the Music app's equalizer.
 struct EqualizerEditor: View {
     @Bindable var settings: AppSettings
+    /// With a curve per app: editing Spotify's instead of Apple Music's.
+    @State private var spotify = false
+
+    /// The curve being edited.
+    private var curve: Binding<EqualizerCurve> {
+        Binding(get: { spotify && settings.equalizerPerApp ? settings.spotifyEqualizer : settings.equalizer(for: nil) },
+                set: { curve in
+                    if spotify && settings.equalizerPerApp {
+                        settings.spotifyEqualizer = curve
+                    } else {
+                        settings.equalizerBands = curve.bands
+                        settings.equalizerPreamp = curve.preamp
+                        settings.equalizerPreset = curve.preset
+                    }
+                })
+    }
 
     var body: some View {
         VStack(spacing: 10) {
+            Toggle("Separate for Apple Music and Spotify", isOn: $settings.equalizerPerApp.animation(IslandMotion.subtle))
+            if settings.equalizerPerApp {
+                Picker("App", selection: $spotify.animation(IslandMotion.subtle)) {
+                    Text("Apple Music").tag(false)
+                    Text("Spotify").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
             HStack {
                 Picker("Preset", selection: presetBinding) {
                     Text("Custom").tag(EqualizerPreset?.none)
@@ -15,20 +40,20 @@ struct EqualizerEditor: View {
                 .frame(maxWidth: 240)
                 Spacer()
                 Button("Reset") {
-                    withAnimation(IslandMotion.subtle) { settings.applyEqualizer(.flat) }
+                    withAnimation(IslandMotion.subtle) { curve.wrappedValue = EqualizerCurve(bands: EqualizerPreset.flat.bands, preamp: 0, preset: .flat) }
                 }
-                .disabled(settings.equalizerBands == Equalizer.flat && settings.equalizerPreamp == 0)
+                .disabled(curve.wrappedValue.bands == Equalizer.flat && curve.wrappedValue.preamp == 0)
             }
             HStack(alignment: .bottom, spacing: 0) {
-                band(label: "Pre", value: Binding(get: { settings.equalizerPreamp },
-                                                   set: { settings.equalizerPreamp = $0; settings.equalizerPreset = nil }))
+                band(label: "Pre", value: Binding(get: { curve.wrappedValue.preamp },
+                                                   set: { curve.wrappedValue.preamp = $0; curve.wrappedValue.preset = nil }))
                 Divider().frame(height: 120).padding(.horizontal, 6)
                 ForEach(Equalizer.frequencies.indices, id: \.self) { index in
                     band(label: Equalizer.label(Equalizer.frequencies[index]), value: Binding(
-                        get: { settings.equalizerBands[index] },
+                        get: { curve.wrappedValue.bands[index] },
                         set: {
-                            settings.equalizerBands[index] = $0
-                            settings.equalizerPreset = nil
+                            curve.wrappedValue.bands[index] = $0
+                            curve.wrappedValue.preset = nil
                         }))
                 }
             }
@@ -36,10 +61,12 @@ struct EqualizerEditor: View {
     }
 
     private var presetBinding: Binding<EqualizerPreset?> {
-        Binding(get: { settings.equalizerPreset },
+        Binding(get: { curve.wrappedValue.preset },
                 set: { preset in
                     guard let preset else { return }
-                    withAnimation(IslandMotion.subtle) { settings.applyEqualizer(preset) }
+                    withAnimation(IslandMotion.subtle) {
+                        curve.wrappedValue = EqualizerCurve(bands: preset.bands, preamp: preset.preamp, preset: preset)
+                    }
                 })
     }
 

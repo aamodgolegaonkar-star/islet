@@ -39,4 +39,18 @@ struct StandbyRuleTests {
         #expect(c.waitSeconds == 300)
         #expect(!c.shouldStart)
     }
+
+    @Test func looksAgainWhenTheWaitRunsOut() {
+        var idle = ready
+        idle.idleMinutes = 5
+        idle.idleSeconds = 100
+        #expect(idle.nextCheck == 120)       // 200 s to go, capped
+        idle.systemTimeout = 140             // display off at 140 s: start at 120 s
+        #expect(idle.nextCheck == 20)
+        idle.idleSeconds = 120
+        #expect(idle.shouldStart)
+        var unplugged = idle
+        unplugged.onPower = false
+        #expect(unplugged.nextCheck == 30)
+    }
 }

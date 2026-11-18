@@ -20,6 +20,30 @@ enum LockSoundStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// When the lock screen keeps the display from going to sleep.
+enum LockKeepAwake: String, CaseIterable, Identifiable {
+    case off
+    case whilePlaying
+    case always
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .off: "Off"
+        case .whilePlaying: "While Music Plays"
+        case .always: "Always"
+        }
+    }
+}
+
+/// One equalizer setting: the bands, the preamp and the preset they came from.
+struct EqualizerCurve: Codable, Equatable {
+    var bands: [Double] = Equalizer.flat
+    var preamp: Double = 0
+    var preset: EqualizerPreset?
+}
+
 /// Which player Islet shows.
 enum PlayerSource: String, CaseIterable, Identifiable {
     /// Whatever the system says is playing (any app).
@@ -270,6 +294,7 @@ enum LockWidget: String, CaseIterable, Identifiable {
     case date
     case worldClock
     case cpu
+    case focus
 
     var id: String { rawValue }
 
@@ -283,6 +308,7 @@ enum LockWidget: String, CaseIterable, Identifiable {
         case .date: "Date"
         case .worldClock: "World Clock"
         case .cpu: "CPU"
+        case .focus: "Focus"
         }
     }
 
@@ -296,6 +322,7 @@ enum LockWidget: String, CaseIterable, Identifiable {
         case .date: "calendar"
         case .worldClock: "globe"
         case .cpu: "cpu"
+        case .focus: "moon.fill"
         }
     }
 
@@ -306,6 +333,7 @@ enum LockWidget: String, CaseIterable, Identifiable {
         case .nowPlaying: "While something plays"
         case .headphones: "While connected"
         case .battery: "Laptops only"
+        case .focus: "While a Focus is on"
         default: nil
         }
     }
@@ -337,6 +365,9 @@ final class AppSettings {
         static let hover = "expandOnHover"
         static let lockWidget = "lockWidgetEnabled"
         static let lockSound = "lockSoundStyle"
+        static let lockPlayerOffset = "lockPlayerOffset"
+        static let lockDisplay = "lockDisplay"
+        static let lockKeepAwake = "lockKeepAwake"
         static let motion = "animatedArtworkEnabled"
         static let islandStyle = "islandStyle"
         static let accentTheme = "accentTheme"
@@ -364,6 +395,13 @@ final class AppSettings {
         static let shelf = "shelfEnabled"
         static let privacyDots = "showPrivacyDots"
         static let lowBattery = "showLowBattery"
+        static let focusIsland = "showFocusInIsland"
+        static let islandWeather = "islandWeather"
+        static let screenCorners = "screenCorners"
+        static let lockAurora = "lockAurora"
+        static let focusBattery = "focusShowBattery"
+        static let focusHeadphones = "focusShowHeadphones"
+        static let focusLevels = "focusShowLevels"
         static let islandLyrics = "showIslandLyrics"
         static let islandClock = "islandClock"
         static let lyricStyle = "lyricStyle"
@@ -420,6 +458,8 @@ final class AppSettings {
         static let eqBands = "equalizerBands"
         static let eqPreamp = "equalizerPreamp"
         static let eqPreset = "equalizerPreset"
+        static let eqPerApp = "equalizerPerApp"
+        static let eqSpotify = "equalizerSpotify"
         static let lockWeather = "lockWeather"
         static let lockWidgetList = "lockWidgets"
         static let worldClockZone = "worldClockZone"
@@ -437,6 +477,18 @@ final class AppSettings {
     }
     var lockSoundStyle: LockSoundStyle {
         didSet { defaults.set(lockSoundStyle.rawValue, forKey: Key.lockSound) }
+    }
+    /// Moves the lock-screen player up (negative) or down from the middle, in points.
+    var lockPlayerOffset: Double {
+        didSet { defaults.set(lockPlayerOffset, forKey: Key.lockPlayerOffset) }
+    }
+    static let lockPlayerOffsetRange: ClosedRange<Double> = -160...160
+    /// The display (by name) the lock-screen widgets and player go on; empty: the main one.
+    var lockDisplay: String {
+        didSet { defaults.set(lockDisplay, forKey: Key.lockDisplay) }
+    }
+    var lockKeepAwake: LockKeepAwake {
+        didSet { defaults.set(lockKeepAwake.rawValue, forKey: Key.lockKeepAwake) }
     }
     var animatedArtworkEnabled: Bool {
         didSet { defaults.set(animatedArtworkEnabled, forKey: Key.motion) }
@@ -643,6 +695,32 @@ final class AppSettings {
     var showLowBattery: Bool {
         didSet { defaults.set(showLowBattery, forKey: Key.lowBattery) }
     }
+    /// The album's colours drifting behind the lock screen when there's no motion artwork.
+    var lockAurora: Bool {
+        didSet { defaults.set(lockAurora, forKey: Key.lockAurora) }
+    }
+    /// Rounds off the display's square corners.
+    var screenCorners: ScreenCornerRounding {
+        didSet { defaults.set(screenCorners.rawValue, forKey: Key.screenCorners) }
+    }
+    /// A weather button in the open island that flips the card to a weather page.
+    var islandWeather: Bool {
+        didSet { defaults.set(islandWeather, forKey: Key.islandWeather) }
+    }
+    /// The Focus mode's icon and name in the island when it turns on or off.
+    var showFocusInIsland: Bool {
+        didSet { defaults.set(showFocusInIsland, forKey: Key.focusIsland) }
+    }
+    /// While a Focus is on, these alerts still show (off: they stay hidden until it ends).
+    var focusShowsBattery: Bool {
+        didSet { defaults.set(focusShowsBattery, forKey: Key.focusBattery) }
+    }
+    var focusShowsHeadphones: Bool {
+        didSet { defaults.set(focusShowsHeadphones, forKey: Key.focusHeadphones) }
+    }
+    var focusShowsLevels: Bool {
+        didSet { defaults.set(focusShowsLevels, forKey: Key.focusLevels) }
+    }
     /// A small clock in the resting island when nothing is playing.
     var islandClock: Bool {
         didSet { defaults.set(islandClock, forKey: Key.islandClock) }
@@ -765,6 +843,20 @@ final class AppSettings {
     var equalizerPreset: EqualizerPreset? {
         didSet { defaults.set(equalizerPreset?.rawValue, forKey: Key.eqPreset) }
     }
+    /// Spotify keeps its own curve (`spotifyEqualizer`); Apple Music uses the one above.
+    var equalizerPerApp: Bool {
+        didSet { defaults.set(equalizerPerApp, forKey: Key.eqPerApp) }
+    }
+    var spotifyEqualizer: EqualizerCurve {
+        didSet { defaults.set(try? JSONEncoder().encode(spotifyEqualizer), forKey: Key.eqSpotify) }
+    }
+
+    /// The curve for the app being equalized.
+    func equalizer(for bundle: String?) -> EqualizerCurve {
+        if equalizerPerApp, bundle == "com.spotify.client" { return spotifyEqualizer }
+        return EqualizerCurve(bands: equalizerBands, preamp: equalizerPreamp, preset: equalizerPreset)
+    }
+
     /// The widgets under the lock-screen clock, in order.
     var lockWidgets: [LockWidget] {
         didSet { defaults.set(lockWidgets.map(\.rawValue), forKey: Key.lockWidgetList) }
@@ -848,6 +940,12 @@ final class AppSettings {
             Key.edgeGlowAllDisplays: false,
             Key.screenLyricsStyle: ScreenLyricsStyle.fisheye.rawValue,
             Key.lowBattery: true,
+            Key.focusIsland: true,
+            Key.islandWeather: true,
+            Key.lockAurora: true,
+            Key.focusBattery: true,
+            Key.focusHeadphones: true,
+            Key.focusLevels: true,
             Key.levelPosition: LevelPosition.island.rawValue,
             Key.hideFromCapture: false,
             Key.portal: false,
@@ -886,6 +984,9 @@ final class AppSettings {
         expandOnHover = defaults.bool(forKey: Key.hover)
         lockWidgetEnabled = defaults.bool(forKey: Key.lockWidget)
         lockSoundStyle = LockSoundStyle(rawValue: defaults.string(forKey: Key.lockSound) ?? "") ?? .iPhone
+        lockPlayerOffset = Self.clamped(defaults.double(forKey: Key.lockPlayerOffset), Self.lockPlayerOffsetRange)
+        lockDisplay = defaults.string(forKey: Key.lockDisplay) ?? ""
+        lockKeepAwake = LockKeepAwake(rawValue: defaults.string(forKey: Key.lockKeepAwake) ?? "") ?? .off
         animatedArtworkEnabled = defaults.bool(forKey: Key.motion)
         islandStyle = IslandStyle(rawValue: defaults.string(forKey: Key.islandStyle) ?? "") ?? .black
         accentTheme = AccentTheme(rawValue: defaults.string(forKey: Key.accentTheme) ?? "") ?? .aurora
@@ -913,6 +1014,13 @@ final class AppSettings {
         shelfEnabled = defaults.bool(forKey: Key.shelf)
         showPrivacyDots = defaults.bool(forKey: Key.privacyDots)
         showLowBattery = defaults.bool(forKey: Key.lowBattery)
+        showFocusInIsland = defaults.bool(forKey: Key.focusIsland)
+        islandWeather = defaults.bool(forKey: Key.islandWeather)
+        lockAurora = defaults.bool(forKey: Key.lockAurora)
+        screenCorners = ScreenCornerRounding(rawValue: defaults.string(forKey: Key.screenCorners) ?? "") ?? .off
+        focusShowsBattery = defaults.bool(forKey: Key.focusBattery)
+        focusShowsHeadphones = defaults.bool(forKey: Key.focusHeadphones)
+        focusShowsLevels = defaults.bool(forKey: Key.focusLevels)
         showIslandLyrics = defaults.bool(forKey: Key.islandLyrics)
         islandClock = defaults.bool(forKey: Key.islandClock)
         lyricStyle = LyricStyle(rawValue: defaults.string(forKey: Key.lyricStyle) ?? "") ?? .wordByWord
@@ -973,6 +1081,9 @@ final class AppSettings {
             ? bands.map { Self.clamped($0, Equalizer.gainRange) } : Equalizer.flat
         equalizerPreamp = Self.clamped(defaults.double(forKey: Key.eqPreamp), Equalizer.gainRange)
         equalizerPreset = defaults.string(forKey: Key.eqPreset).flatMap(EqualizerPreset.init(rawValue:))
+        equalizerPerApp = defaults.bool(forKey: Key.eqPerApp)
+        spotifyEqualizer = defaults.data(forKey: Key.eqSpotify).flatMap { try? JSONDecoder().decode(EqualizerCurve.self, from: $0) }
+            .map { $0.bands.count == Equalizer.frequencies.count ? $0 : EqualizerCurve() } ?? EqualizerCurve()
         if let saved = defaults.stringArray(forKey: Key.lockWidgetList) {
             var widgets: [LockWidget] = []
             for widget in saved.compactMap(LockWidget.init(rawValue:))

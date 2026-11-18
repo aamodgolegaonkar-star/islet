@@ -21,7 +21,9 @@ struct LockLayout {
     static let playerSize = CGSize(width: 460, height: 224)
 
     /// `clockBottom`: where the real clock's digits end (from LoginUIKit's own views).
-    init(screen: NSScreen, loginWindows: [CGRect], clockBottom measuredClock: CGFloat? = nil) {
+    /// `playerOffset`: moves the player down (positive) or up from the middle, kept between
+    /// the widgets and the password field.
+    init(screen: NSScreen, loginWindows: [CGRect], clockBottom measuredClock: CGFloat? = nil, playerOffset: CGFloat = 0) {
         let frame = screen.frame
         let height = frame.height
         var clockBottom = measuredClock ?? height * 0.33
@@ -46,7 +48,8 @@ struct LockLayout {
         widgets = cocoaRect(top: widgetsTop, size: Self.widgetsSize)
         let regionTop = widgetsTop + Self.widgetsSize.height
         let regionBottom = loginTop - 8
-        let playerTop = max(regionTop, (regionTop + regionBottom - Self.playerSize.height) / 2)
+        let middle = max(regionTop, (regionTop + regionBottom - Self.playerSize.height) / 2)
+        let playerTop = min(max(middle + playerOffset, regionTop), max(regionTop, regionBottom - Self.playerSize.height))
         player = cocoaRect(top: playerTop, size: Self.playerSize)
 
         clockInset = clockBottom + 18

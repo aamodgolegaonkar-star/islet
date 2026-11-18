@@ -98,6 +98,7 @@ final class IslandController {
         panel.contentView = host
 
         model.openPlayer = { [weak self] in self?.openPlayer() }
+        model.openPhonePage = { [weak self] in self?.openPhonePage() }
         model.onShelfDrop = { [weak self] in self?.fileDragActive = false }
         model.requestExpand = { [weak self] in self?.setPresentation(.expanded) }
         model.interactionEnded = { [weak self] in self?.mouseMoved() }
@@ -189,7 +190,7 @@ final class IslandController {
 
     /// Debug hook used by DebugTools to drive the island without a mouse.
     func debugSetPresentation(_ presentation: IslandPresentation) {
-        debugPinned = presentation == .expanded
+        debugPinned = presentation != .compact
         setPresentation(presentation)
     }
 
@@ -290,7 +291,9 @@ final class IslandController {
 
     private func islandScreenRect() -> CGRect {
         let busy = hasTrack || model.timerEnd != nil
-        let local = model.metrics.islandRect(for: model.presentation, hasTrack: busy, activity: model.activity)
+        let bubble = model.link.map { $0.phone != nil || !$0.devices.isEmpty } ?? false
+        let local = model.metrics.islandRect(for: model.presentation, hasTrack: busy, activity: model.activity,
+                                             phoneBubble: bubble)
         return CGRect(x: panel.frame.minX + local.minX, y: panel.frame.maxY - local.maxY,
                       width: local.width, height: local.height)
     }
@@ -418,7 +421,10 @@ final class IslandController {
         if model.isHovered != hot { model.isHovered = hot }
         setClickThrough(!hot)
         setHoverCheck(hot || model.presentation != .compact)
-        if hot {
+        if hot, model.activity?.holdsHover == true {
+            // Reaching for a card's buttons: leave it be.
+            cancelPending()
+        } else if hot {
             if model.presentation == .compact, settings.expandOnHover, hasTrack {
                 schedule(.expanded, after: .milliseconds(60))
             } else if model.presentation == .compact, settings.expandOnHover, settings.shelfEnabled,
@@ -478,13 +484,48 @@ final class IslandController {
         show(.portal(arrival), for: .seconds(4.5))
     }
 
+    /// The Android phone wants attention (Islet Link). Calls and pairing stay up longer.
+    func showPhone(_ alert: PhoneAlert, for duration: Duration) {
+        if case .transfer = alert, case .transfer? = currentPhoneAlert {
+            // Progress only: update in place without re-running the card's entrance.
+            model.activity = .phone(alert)
+            keepActivity(for: duration)
+            return
+        }
+        if case .notification = alert {
+            guard focusAllows(false) else { return }
+        }
+        show(.phone(alert), for: duration)
+    }
+
+    private var currentPhoneAlert: PhoneAlert? {
+        if case let .phone(alert)? = model.activity { alert } else { nil }
+    }
+
+    /// Opens the phone page.
+    func openPhonePage() {
+        withAnimation(IslandMotion.open) { setPresentation(.phone) }
+    }
+
+    /// The Focus mode that's on, if any: alerts switched off for Focus stay hidden meanwhile.
+    var focus: FocusMode?
+
+    private func focusAllows(_ shown: Bool) -> Bool { focus == nil || shown }
+
+    /// A Focus mode turned on or off.
+    func showFocus(_ mode: FocusMode, on: Bool) {
+        show(.focus(mode, on: on), for: .seconds(2.5))
+    }
+
     /// Shows the charging animation for a few seconds, like the iPhone when plugged in.
     func showCharging(_ battery: BatteryState) {
+        guard focusAllows(settings.focusShowsBattery) else { return }
         show(.charging(battery), for: .seconds(settings.chargingAlertDuration))
     }
 
     /// Volume or brightness level, kept up while the keys are pressed.
     func showLevel(_ hud: LevelHUD) {
+        guard focusAllows(settings.focusShowsLevels) else { return }
         if settings.levelPosition != .island {
             EdgeLevelHUD.shared.show(hud, on: settings.levelPosition)
             return
@@ -507,6 +548,7 @@ final class IslandController {
 
     /// The battery dropped to a warning level.
     func showLowBattery(_ percent: Int) {
+        guard focusAllows(settings.focusShowsBattery) else { return }
         show(.lowBattery(percent), for: .seconds(4))
     }
 
@@ -543,6 +585,7 @@ final class IslandController {
 
     /// The headphones that just connected.
     func showHeadphones(_ card: HeadphoneCard) {
+        guard focusAllows(settings.focusShowsHeadphones) else { return }
         show(.headphones(card), for: .seconds(4))
     }
 
@@ -566,8 +609,13 @@ final class IslandController {
         activityTask?.cancel()
         activityTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: duration)
-            guard !Task.isCancelled else { return }
-            self?.clearActivity()
+            guard !Task.isCancelled, let self else { return }
+            // Still under the pointer: keep the card until it moves away.
+            if self.model.isHovered, self.model.activity?.holdsHover == true {
+                self.keepActivity(for: .seconds(1))
+                return
+            }
+            self.clearActivity()
         }
     }
 

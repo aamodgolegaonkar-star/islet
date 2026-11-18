@@ -98,7 +98,7 @@ final class OnboardingController {
 /// the full tutorial shows every page, and after updating, "What's New" shows the new ones.
 enum Page: Int, CaseIterable {
     case welcome, whatsNew
-    case island, swipeSkip, outOfTheWay, motion, colors, feel, player, wordLyrics, screenLyrics, wallLyrics, edgeGlow, glowBeat, activities, levels, controls, sound, shelf, portal, webPlayers, lock, lockWidgets, lockCustomize, standby, faceID, agents
+    case island, swipeSkip, scrollingTitles, islandWeather, outOfTheWay, motion, colors, corners, feel, player, wordLyrics, screenLyrics, wallLyrics, edgeGlow, glowBeat, activities, focus, levels, controls, sound, perAppEQ, shelf, portal, portalIncoming, androidPhone, androidRemote, webPlayers, lock, lockWidgets, lockCustomize, lockPlayer, aurora, standby, faceID, agents
     case done
 
     /// The full tutorial, in order.
@@ -124,6 +124,7 @@ enum Page: Int, CaseIterable {
         case .wordLyrics, .screenLyrics, .edgeGlow: "1.8.0"
         case .wallLyrics, .glowBeat: "1.9.0"
         case .swipeSkip, .outOfTheWay, .portal, .faceID, .motion, .colors, .standby: "2.0"
+        case .focus, .scrollingTitles, .islandWeather, .corners, .perAppEQ, .portalIncoming, .lockPlayer, .aurora, .androidPhone, .androidRemote: "2.1"
         }
     }
 
@@ -133,6 +134,15 @@ enum Page: Int, CaseIterable {
         case .whatsNew: "What's New in Islet"
         case .island: "Your music lives in the island"
         case .swipeSkip: "Swipe to skip"
+        case .scrollingTitles: "Long titles, in full"
+        case .islandWeather: "The weather, a click away"
+        case .corners: "Rounded corners everywhere"
+        case .perAppEQ: "An equalizer for each app"
+        case .portalIncoming: "Watch it come through"
+        case .androidPhone: "Your Android phone, in the island"
+        case .androidRemote: "Your phone runs your Mac"
+        case .lockPlayer: "Your lock-screen player"
+        case .aurora: "An aurora from your album"
         case .outOfTheWay: "Out of the way when you want"
         case .motion: "Smoother, everywhere"
         case .colors: "Your colors"
@@ -144,6 +154,7 @@ enum Page: Int, CaseIterable {
         case .wallLyrics: "A wall of lyrics"
         case .glowBeat: "Glow to the beat"
         case .activities: "Live activities"
+        case .focus: "Focus, in the island"
         case .levels: "Volume and brightness, your way"
         case .controls: "Pick where sound plays"
         case .sound: "Equalizer and live waveform"
@@ -166,6 +177,15 @@ enum Page: Int, CaseIterable {
         case .whatsNew: "Here's what this update adds. It only takes a moment."
         case .island: "Hover over the island at the top of your screen to open it. Try this one."
         case .swipeSkip: "Swipe two fingers over the island: left for the next song, right for the previous one."
+        case .scrollingTitles: "When a song's name is too long to fit, it glides past so you can read all of it, then rests. Point at it to see it again."
+        case .islandWeather: "Click the weather button under the open island and the card flips to the weather where you are, with the next six hours. Turn it off in Settings → Island."
+        case .corners: "Round off the square bottom corners of your MacBook screen, or all four on another display, to match the curved top. Settings → Appearance."
+        case .perAppEQ: "Give Apple Music and Spotify each their own equalizer curve: turn on Separate for Apple Music and Spotify in Music & Lyrics → Sound."
+        case .androidPhone: "Install Islet on your Android phone and pair it in Settings → Android Phone. Its notifications and calls appear in the island, with Reply, Answer and Decline. The round button beside the open island shows the phone's battery and opens the phone page."
+        case .androidRemote: "Your Mac's music plays on the phone's lock screen with its controls. The app is a trackpad, keyboard and slide clicker for the Mac, and sends files at full quality over USB, Wi-Fi or Bluetooth."
+        case .portalIncoming: "When your iPhone sends something big, the portal opens on the right edge of your screen and widens as it comes in, then closes as it lands."
+        case .lockPlayer: "Move the lock-screen player higher or lower, pick which display it's on, and keep the display awake while music plays. Settings → Lock Screen → Player."
+        case .aurora: "Songs without motion artwork fill the lock screen with their cover, turned, mirrored and flowing like an aurora, and it crossfades to the next song's."
         case .outOfTheWay: "Islet can hide a paused song from the island, right away or after a while, and stay out of screenshots and screen sharing. Both are in Settings → Island."
         case .motion: "Every animation in Islet was retuned to feel like one object. Swipe between desktops and the island rides along with the old one, then drops onto the new one. Reduce Motion in System Settings calms it all down."
         case .colors: "Pick a color theme in Settings → Appearance. It tints switches and sliders, Portal, Standby and the sidebar. Portal can have its own colors too. Click a color here."
@@ -177,6 +197,7 @@ enum Page: Int, CaseIterable {
         case .wallLyrics: "A second look for the big lyrics: the last few lines on a wall drifting in 3D, each word popping in as it's sung. Pick Wall in Music & Lyrics → On Screen."
         case .glowBeat: "Turn on Pulse to the beat and the edge glow flares with the bass of whatever's playing."
         case .activities: "Charging, headphones connecting, timers and low battery pop up in the island, and a dot shows when the mic or camera is on. Pick how the charging battery looks and how long it stays in Live Activities → Charging."
+        case .focus: "Turn on a Focus and the island shows its icon and name; on the lock screen, add the Focus widget. Choose which alerts stay quiet while a Focus is on in Live Activities → Focus."
         case .levels: "Islet replaces the macOS volume and brightness indicator. Show it in the island or as a slider on either edge of the screen (Live Activities → Position)."
         case .controls: "Click the speaker button in the open island to switch between speakers, AirPods, HomePod or paired headphones, and set AirPods noise control."
         case .sound: "Shape Apple Music and Spotify with a 10-band equalizer, and let the island's bars follow the real music. Turn them on in Music & Lyrics → Sound, then allow Islet once in Privacy & Security."
@@ -185,11 +206,11 @@ enum Page: Int, CaseIterable {
         case .webPlayers: "Playing in a browser? Islet names the service: YouTube Music, Deezer, Qobuz, Tidal, SoundCloud and more."
         case .lock: "Your music stays on the lock screen. A wrong finger shakes the padlock; the right one opens it."
         case .lockWidgets: "Small widgets sit under the clock: battery, what's playing, volume, your headphones and more, with motion artwork behind them."
-        case .lockCustomize: "Drag widgets in, out and around in Settings → Lock Screen. New: Date, World Clock and CPU. Click a tile here to take it away."
+        case .lockCustomize: "Drag widgets in, out and around in Settings → Lock Screen. Besides the basics there are Date, World Clock, CPU and Focus. Click a tile here to take it away."
         case .standby: "Leave your Mac on its charger and walk away: after a few minutes the screen becomes a big clock with what's playing, the weather and the battery. Touch anything to come back. Settings → Standby, or Start Standby in the menu bar."
         case .faceID: "Look at your Mac to unlock it: Islet types your password for you. The island shows the Face ID mark when it's your face, and the fingerprint when it's Touch ID. Strict liveness adds a quick colour flash that photos and videos can't fake. Set it up in Settings → Face ID; it's for convenience, not security."
         case .agents: "Claude Code and Codex tell you in the island when they need you or finish. Click to jump to the terminal."
-        case .done: "Everything can be tuned in Settings: island size, glass, colors, sound, haptics, Portal, Standby, Face ID and more."
+        case .done: "Everything can be tuned in Settings: island size, glass, colors, sound, haptics, Portal, your Android phone, Standby, Face ID and more."
         }
     }
 }
@@ -359,6 +380,16 @@ private struct PageView: View {
         case .wallLyrics: WallLyricsDemo()
         case .glowBeat: GlowBeatDemo()
         case .activities: ActivitiesDemo()
+        case .scrollingTitles: ScrollingTitlesDemo()
+        case .islandWeather: IslandWeatherDemo()
+        case .corners: CornersDemo()
+        case .perAppEQ: PerAppEQDemo()
+        case .portalIncoming: PortalIncomingDemo()
+        case .androidPhone: AndroidPhoneDemo()
+        case .androidRemote: AndroidRemoteDemo()
+        case .lockPlayer: LockPlayerDemo()
+        case .aurora: AuroraDemo()
+        case .focus: FocusDemo()
         case .levels: LevelsDemo()
         case .controls: OutputDemo()
         case .sound: SoundDemo()

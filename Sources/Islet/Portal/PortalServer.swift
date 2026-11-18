@@ -46,6 +46,8 @@ final class PortalServer: @unchecked Sendable {
     private let onDelivery: @Sendable (PortalDelivery) -> Void
     private let onPaired: @Sendable (PortalDevice) -> Void
     private let onState: @Sendable (String?) -> Void
+    /// A paired phone's upload under way: its name and how far along (nil: over).
+    var onIncoming: (@Sendable (String, Double?) -> Void)?
 
     let devices = OSAllocatedUnfairLock<[PortalDevice]>(initialState: [])
     let pairing = OSAllocatedUnfairLock<PortalPairingCode?>(initialState: nil)
@@ -219,6 +221,21 @@ final class PortalConnection: @unchecked Sendable {
     private var received: Int64 = 0
     private var closed = false
     private var idle: DispatchWorkItem?
+    /// The paired phone sending a file, while it comes in.
+    private var sender: String?
+    private var reported = -1.0
+
+    /// Upload progress for the edge portal, in steps of a few percent; nil when it's over.
+    private func report(_ progress: Double?) {
+        guard let sender else { return }
+        if let progress {
+            guard progress - reported >= 0.04 || reported < 0 else { return }
+            reported = progress
+        } else {
+            self.sender = nil
+        }
+        server?.onIncoming?(sender, progress)
+    }
 
     init(connection: NWConnection, queue: DispatchQueue, server: PortalServer) {
         self.connection = connection
@@ -242,6 +259,7 @@ final class PortalConnection: @unchecked Sendable {
         try? handle?.close()
         handle = nil
         if head?.method == "POST", body.file != nil, received < (head?.contentLength ?? 0) { body.discard() }
+        report(nil)
         connection.cancel()
         onClose?()
     }
@@ -289,7 +307,9 @@ final class PortalConnection: @unchecked Sendable {
         guard parsed.contentLength <= limit else { return send(413, "text/plain", Data("Too large".utf8)) }
         // Only a paired phone may make Islet write to disk.
         if isFile {
-            guard server?.device(for: parsed.header("x-islet-token") ?? parsed.query["t"]) != nil else { return unauthorized() }
+            guard let device = server?.device(for: parsed.header("x-islet-token") ?? parsed.query["t"]) else { return unauthorized() }
+            sender = device.name
+            report(0)
             let url = FileManager.default.temporaryDirectory.appending(path: "portal-\(UUID().uuidString)")
             guard FileManager.default.createFile(atPath: url.path, contents: nil),
                   let handle = try? FileHandle(forWritingTo: url) else { return send(500, "text/plain", Data("Disk".utf8)) }
@@ -306,6 +326,7 @@ final class PortalConnection: @unchecked Sendable {
         guard room > 0 else { return }
         let chunk = data.count > room ? data.prefix(Int(room)) : data
         received += Int64(chunk.count)
+        if head.contentLength > 0 { report(Double(received) / Double(head.contentLength)) }
         if let handle {
             do { try handle.write(contentsOf: chunk) } catch { body.discard(); return send(500, "text/plain", Data("Disk".utf8)) }
         } else {

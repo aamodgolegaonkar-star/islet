@@ -37,6 +37,8 @@ final class PowerMonitor {
     var onPluggedIn: ((BatteryState) -> Void)?
     /// Called once each time the battery drops to 20% and to 10% while unplugged.
     var onLow: ((Int) -> Void)?
+    /// Any change in level or power source (Islet Link tells the phone).
+    var onStateChange: (() -> Void)?
     private(set) var state = Battery.current()
     private var source: CFRunLoopSource?
 
@@ -63,6 +65,7 @@ final class PowerMonitor {
         let previous = state
         state = Battery.current()
         LiveTuning.shared.refreshBatterySaving()
+        if state != previous { onStateChange?() }
         if let state, state.isPluggedIn, previous?.isPluggedIn == false {
             onPluggedIn?(state)
         }

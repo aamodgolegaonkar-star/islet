@@ -22,6 +22,12 @@ struct IslandView: View {
     private var isExpanded: Bool { model.presentation == .expanded && hasTrack && activity == nil }
     private var isShelf: Bool { model.presentation == .shelf && activity == nil }
     private var isControls: Bool { model.presentation == .controls && activity == nil }
+    private var isPhone: Bool { model.presentation == .phone && activity == nil && model.link != nil }
+    /// The phone button floats beside the open island once a phone is paired.
+    private var showsPhoneBubble: Bool {
+        guard let link = model.link, link.phone != nil || !link.devices.isEmpty else { return false }
+        return activity == nil && (isExpanded || isShelf || isControls || isPhone)
+    }
     /// The compact island is showing a running timer.
     private var showsTimer: Bool { model.timerEnd != nil && activity == nil && model.presentation == .compact }
     /// The resting island shows the clock (Settings → Island) when nothing else needs it.
@@ -39,7 +45,7 @@ struct IslandView: View {
         let card = showsTimer || showsClock ? CGSize(width: metrics.timerWidth, height: sized.height) : sized
         let radii = metrics.cornerRadii(for: model.presentation, hasTrack: busy, activity: activity)
         // A notch is black hardware, so the compact island stays black over it.
-        let glass = style.isGlass && !(metrics.hasNotch && !isExpanded && !isShelf && !isControls && activity?.isCard != true)
+        let glass = style.isGlass && !(metrics.hasNotch && !isExpanded && !isShelf && !isControls && !isPhone && activity?.isCard != true)
         let shape = UnevenRoundedRectangle(
             topLeadingRadius: radii.top, bottomLeadingRadius: radii.bottom,
             bottomTrailingRadius: radii.bottom, topTrailingRadius: radii.top, style: .continuous)
@@ -94,6 +100,9 @@ struct IslandView: View {
             }
             // Beside the island (outside its shape), so it never covers the content.
             .overlay(alignment: .topTrailing) { privacyDot(metrics) }
+            if let link = model.link {
+                phoneBubble(link, metrics: metrics, card: card)
+            }
         }
         .modifier(RoutedClickSpace(windowWidth: metrics.windowSize.width, topInset: metrics.topInset))
         .shadow(color: .green.opacity(isCharging && chargingGlow ? 0.55 : 0), radius: 16)
@@ -119,6 +128,7 @@ struct IslandView: View {
         .animation(isExpanded ? IslandMotion.open : IslandMotion.close, value: isExpanded)
         .animation(isShelf ? IslandMotion.open : IslandMotion.close, value: isShelf)
         .animation(isControls ? IslandMotion.open : IslandMotion.close, value: isControls)
+        .animation(isPhone ? IslandMotion.open : IslandMotion.close, value: isPhone)
         .animation(IslandMotion.activity, value: activity)
         .animation(IslandMotion.open, value: hasTrack)
         .animation(IslandMotion.quick, value: model.isSuppressed)
@@ -180,8 +190,18 @@ struct IslandView: View {
             PortalArrivalContent(arrival: arrival, topInset: metrics.hasNotch ? metrics.notchHeight : 0)
                 .frame(width: metrics.headphoneCardWidth, height: metrics.compactHeight + 84)
                 .transition(.materialize(delay: 0.06))
+        } else if case let .phone(alert)? = activity {
+            PhoneAlertContent(alert: alert, link: model.link, topInset: metrics.hasNotch ? metrics.notchHeight : 0) {
+                model.openPhonePage()
+            }
+            .frame(width: metrics.headphoneCardWidth, height: metrics.phoneAlertHeight(alert))
+            .transition(.materialize(delay: 0.06))
         } else if case let .lowBattery(percent)? = activity {
             LowBatteryContent(percent: percent, besideNotch: metrics.hasNotch)
+                .frame(width: metrics.chargingWidth, height: metrics.compactHeight)
+                .transition(.materialize(delay: 0.04))
+        } else if case let .focus(mode, on)? = activity {
+            FocusContent(mode: mode, on: on, besideNotch: metrics.hasNotch)
                 .frame(width: metrics.chargingWidth, height: metrics.compactHeight)
                 .transition(.materialize(delay: 0.04))
         } else if activity == .timerDone {
@@ -192,6 +212,11 @@ struct IslandView: View {
             LockedContent(failed: activity == .lockFailed)
                 .frame(width: metrics.lockedWidth, height: metrics.compactHeight)
                 .transition(.materialize(delay: 0.04))
+        } else if isPhone, let link = model.link {
+            PhonePageView(link: link, model: model, notchHeight: metrics.hasNotch ? metrics.notchHeight : nil,
+                          back: { withAnimation(IslandMotion.open) { model.presentation = hasTrack ? .expanded : .controls } })
+                .frame(width: metrics.expandedSize.width, height: metrics.phoneHeight)
+                .transition(.materialize(delay: 0.05))
         } else if isControls {
             ControlCenterView(model: model, store: store, notchHeight: metrics.hasNotch ? metrics.notchHeight : nil,
                               showMusic: { withAnimation(IslandMotion.open) { model.showsTrack = true; model.presentation = .expanded } },
@@ -256,7 +281,29 @@ struct IslandView: View {
 
     // MARK: - Expanded
 
+    /// The player, or the weather page in its place (pushed in from the side).
     private func expandedContent(split: Bool) -> some View {
+        ZStack {
+            if model.showsWeather, let weather = model.weather {
+                IslandWeatherPage(report: weather)
+                    .padding(.top, model.metrics.hasNotch ? model.metrics.notchHeight + 4 : 0)
+                    .padding(.horizontal, 24)
+                    .transition(.push(from: .trailing).combined(with: .opacity))
+            } else {
+                playerCard(split: split)
+                    .transition(.push(from: .leading).combined(with: .opacity))
+            }
+        }
+        .task(id: isExpanded && settings.islandWeather) {
+            guard isExpanded, settings.islandWeather else { return }
+            if let report = await WeatherService.shared.current(), report != model.weather {
+                withAnimation(IslandMotion.subtle) { model.weather = report }
+            }
+        }
+        .onChange(of: isExpanded) { _, open in if !open { model.showsWeather = false } }
+    }
+
+    private func playerCard(split: Bool) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 13) {
                 artwork(cornerRadius: 13)
@@ -265,10 +312,10 @@ struct IslandView: View {
                     .onTapGesture { model.openPlayer() }
                     .help("Open Now Playing")
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(store.title)
+                    MarqueeText(text: store.title)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text(store.subtitle)
+                    MarqueeText(text: store.subtitle)
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(.white.opacity(0.62))
                     if case .synced = store.lyrics, LiveTuning.shared.showIslandLyrics {
@@ -298,6 +345,27 @@ struct IslandView: View {
         }
         .padding(.top, model.metrics.hasNotch ? model.metrics.notchHeight + 6 : 0)
         .padding(.horizontal, 24)
+    }
+
+    /// The phone button: a droplet that slips out of the island's left side as it opens.
+    private func phoneBubble(_ link: LinkController, metrics: IslandMetrics, card: CGSize) -> some View {
+        let shown = showsPhoneBubble
+        let size = IslandMetrics.phoneBubbleSize
+        return PhoneBubble(link: link, isOpen: isPhone) {
+            withAnimation(IslandMotion.open) {
+                model.presentation = isPhone ? (hasTrack ? .expanded : .controls) : .phone
+            }
+        }
+        .frame(width: size, height: size)
+        .modifier(IslandSurface(style: style, glass: style.isGlass, shape: Circle(), radii: (.infinity, .infinity),
+                                expanded: true, artwork: store.artwork, palette: store.palette))
+        .scaleEffect(shown ? 1 : 0.3)
+        .opacity(shown ? 1 : 0)
+        .offset(x: shown ? -(card.width / 2 + IslandMetrics.phoneBubbleGap + size / 2) : -(card.width / 2 - size / 2),
+                y: metrics.phoneBubbleY)
+        .allowsHitTesting(shown)
+        .animation(shown ? IslandMotion.open.delay(IslandMotion.reduced ? 0 : 0.1) : IslandMotion.close, value: shown)
+        .animation(IslandMotion.open, value: card.width)
     }
 
     /// Orange while a microphone is in use, green for the camera (green wins), at the edge
@@ -334,8 +402,18 @@ struct IslandView: View {
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
             Spacer(minLength: 0)
-            TransportRow(store: store, scale: 0.8, look: .highlight, clickable: isExpanded)
+            // Four side buttons (shelf, output, weather, Control Center): smaller play controls.
+            TransportRow(store: store, scale: crowded ? 0.7 : 0.8, look: .highlight, clickable: isExpanded)
             Spacer(minLength: 0)
+            if isExpanded, settings.islandWeather, let weather = model.weather {
+                IslandPillButton(label: nil, symbol: model.showsWeather ? "music.note" : weather.symbol,
+                                 help: model.showsWeather ? "Player" : "Weather", id: "island.weather", diameter: 30) {
+                    withAnimation(IslandMotion.open) { model.showsWeather.toggle() }
+                }
+                .symbolRenderingMode(.multicolor)
+                .contentTransition(.symbolEffect(.replace))
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
             if isExpanded {
                 IslandPillButton(label: nil, symbol: "switch.2", help: "Control Center", id: "island.controls", diameter: 30) {
                     withAnimation(IslandMotion.open) { model.presentation = .controls }
@@ -344,6 +422,10 @@ struct IslandView: View {
             }
         }
         .padding(.horizontal, 11)
+    }
+
+    private var crowded: Bool {
+        isExpanded && !model.shelf.items.isEmpty && settings.islandWeather && model.weather != nil
     }
 
     private var shelfBadge: some View {

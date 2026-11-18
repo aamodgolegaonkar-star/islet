@@ -1,4 +1,5 @@
 import Darwin
+import IsletCore
 import SwiftUI
 
 /// One widget of the lock-screen row, drawn the same on the lock screen and in the
@@ -38,6 +39,10 @@ struct LockWidgetTile: View {
             WorldClockTile(zone: TimeZone(identifier: settings.worldClockZone) ?? .current).circleTile()
         case .cpu:
             CPURing(load: model.cpuLoad ?? 0).circleTile()
+        case .focus:
+            if let focus = model.focus {
+                FocusTile(mode: focus).circleTile()
+            }
         }
     }
 }
@@ -168,5 +173,25 @@ final class CPULoadSampler {
         defer { last = now }
         guard let last, now.total > last.total else { return nil }
         return min(max(Double(now.busy - last.busy) / Double(now.total - last.total), 0), 1)
+    }
+}
+
+/// The Focus mode that's on: its icon in its colour over its name.
+struct FocusTile: View {
+    let mode: FocusMode
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Image(systemName: mode.displaySymbol)
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(mode.color)
+                .contentTransition(.symbolEffect(.replace))
+            Text(mode.name)
+                .font(.system(size: 8.5, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(8)
     }
 }

@@ -19,7 +19,7 @@ final class ScreenLyricsController {
     private let model = ScreenLyricsModel()
     private var locked = LockScreenController.screenIsLockedNow()
     private var playerVisible = false
-    private var observers: [DistributedObserver] = []
+    private var lockSignal: LockSignal?
     private var space: SkyLightSpace? { SkyLightSpace.shared }
     private lazy var desktopPanel = makePanel("screenLyrics.desktop")
     private lazy var lockPanel: NSPanel = {
@@ -65,10 +65,7 @@ final class ScreenLyricsController {
     }
 
     func start() {
-        observers = [
-            DistributedObserver("com.apple.screenIsLocked") { [weak self] _ in self?.setLocked(true) },
-            DistributedObserver("com.apple.screenIsUnlocked") { [weak self] _ in self?.setLocked(false) },
-        ]
+        lockSignal = LockSignal { [weak self] locked in self?.setLocked(locked) }
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in

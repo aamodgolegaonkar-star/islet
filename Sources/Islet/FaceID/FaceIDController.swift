@@ -37,6 +37,7 @@ final class FaceIDController {
     @ObservationIgnored private var camera: FaceCamera?
     @ObservationIgnored private var engine: FaceEngine?
     @ObservationIgnored private var observers: [Any] = []
+    @ObservationIgnored private var lockSignal: LockSignal?
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var lastAttempt: Date?
     /// Typing the password and waiting to see it take.
@@ -57,10 +58,7 @@ final class FaceIDController {
     }
 
     func start() {
-        observers = [
-            DistributedObserver("com.apple.screenIsLocked") { [weak self] _ in self?.locked() },
-            DistributedObserver("com.apple.screenIsUnlocked") { [weak self] _ in self?.unlocked() },
-        ]
+        lockSignal = LockSignal { [weak self] locked in locked ? self?.locked() : self?.unlocked() }
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -318,6 +316,8 @@ final class FaceIDController {
         Task { @MainActor [weak self] in
             defer { self?.lightChecking = false; self?.flashStart = nil }
             for (index, tint) in challenge.tints.enumerated() {
+                // The scan ended meanwhile (unlocked by hand): no colour over the desktop.
+                guard self?.isScanning == true else { break }
                 self?.lockScreen?.flash(tint.color)
                 if index == 0 { self?.flashStart = ProcessInfo.processInfo.systemUptime }
                 try? await Task.sleep(for: .seconds(FlashChallenge.step))

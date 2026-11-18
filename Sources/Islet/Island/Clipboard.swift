@@ -28,6 +28,7 @@ final class ClipboardHistory {
     private(set) var entries: [Entry] = []
     @ObservationIgnored private var changeCount = NSPasteboard.general.changeCount
     @ObservationIgnored private var timer: Timer?
+    @ObservationIgnored private var sleepObservers: [NSObjectProtocol] = []
     @ObservationIgnored private let limit = 30
 
     var isEnabled = false {
@@ -39,16 +40,33 @@ final class ClipboardHistory {
 
     private func start() {
         changeCount = NSPasteboard.general.changeCount
-        // The pasteboard has no change notification; its counter is cheap to read.
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        watch(true)
+        // Nothing gets copied while the display sleeps: no looking then.
+        let center = NSWorkspace.shared.notificationCenter
+        sleepObservers = [(NSWorkspace.screensDidSleepNotification, false), (NSWorkspace.screensDidWakeNotification, true)]
+            .map { name, on in
+                center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.watch(on) }
+                }
+            }
+    }
+
+    /// The pasteboard has no change notification; its counter is cheap to read, once a second.
+    private func watch(_ on: Bool) {
+        timer?.invalidate()
+        timer = nil
+        guard on else { return }
+        poll()
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
-        timer?.tolerance = 0.2
+        timer?.tolerance = 0.4
     }
 
     private func stop() {
-        timer?.invalidate()
-        timer = nil
+        watch(false)
+        sleepObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
+        sleepObservers = []
         entries = []
     }
 

@@ -77,6 +77,16 @@ extension Page {
         case .wallLyrics: ("Wall lyrics", "rectangle.stack.fill")
         case .glowBeat: ("Glow to the beat", "waveform")
         case .activities: ("Live activities", "bolt.fill")
+        case .focus: ("Focus", "moon.fill")
+        case .scrollingTitles: ("Scrolling titles", "text.line.first.and.arrowtriangle.forward")
+        case .islandWeather: ("Weather", "cloud.sun.fill")
+        case .corners: ("Rounded corners", "square.dashed")
+        case .perAppEQ: ("EQ per app", "slider.vertical.3")
+        case .portalIncoming: ("Portal progress", "arrow.down.circle.fill")
+        case .androidPhone: ("Android phone", "smartphone")
+        case .androidRemote: ("Phone remote", "hand.point.up.left.fill")
+        case .lockPlayer: ("Lock player", "rectangle.portrait.on.rectangle.portrait")
+        case .aurora: ("Album aurora", "sparkles")
         case .lock: ("Lock screen", "lock.fill")
         case .agents: ("Coding agents", "terminal.fill")
         case .welcome, .whatsNew, .done: (title, "star.fill")
@@ -1014,5 +1024,399 @@ struct StandbyDemo: View {
             .font(.system(size: 18, weight: .semibold))
             .frame(width: 54, height: 44)
             .background(.white.opacity(0.08), in: .rect(cornerRadius: 12, style: .continuous))
+    }
+}
+
+/// Focus modes turning on and off in the island, drawn by the island's own view, with the
+/// lock-screen tile for the mode that's on.
+struct FocusDemo: View {
+    private static let modes = [
+        FocusMode(identifier: "work", name: "Work", symbol: "person.lanyardcard.fill", tint: "systemTealColor"),
+        FocusMode(identifier: "sleep", name: "Sleep", symbol: "bed.double.fill", tint: "systemMintColor"),
+        FocusMode(identifier: "dnd", name: "Do Not Disturb", symbol: "moon.fill", tint: "systemIndigoColor"),
+    ]
+    @State private var step = 0
+
+    private var mode: FocusMode { Self.modes[(step / 2) % Self.modes.count] }
+    private var on: Bool { step % 2 == 0 }
+
+    var body: some View {
+        VStack(spacing: 34) {
+            FocusContent(mode: mode, on: on)
+                .frame(width: 300, height: 38)
+                .background(Capsule().fill(.black))
+                .id(step)
+                .transition(.scale(scale: 0.7).combined(with: .opacity))
+                .scaleEffect(1.3)
+            FocusTile(mode: mode)
+                .frame(width: 66, height: 66)
+                .glassEffect(.regular, in: Circle())
+                .opacity(on ? 1 : 0.25)
+                .scaleEffect(1.2)
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.7))
+                withAnimation(IslandMotion.playful) { step += 1 }
+            }
+        }
+    }
+}
+
+// MARK: - 2.1
+
+/// A long title gliding past in a pill, the island's own scrolling text.
+struct ScrollingTitlesDemo: View {
+    @State private var cycle = 0
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(LinearGradient(colors: [.orange, .pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                MarqueeText(text: "A Song With a Name Far Too Long for the Island (feat. Everyone)", passes: 1)
+                    .font(.system(size: 15, weight: .semibold))
+                    .id(cycle)
+                Text("Islet").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(width: 330, height: 72)
+        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(.black))
+        .scaleEffect(1.25)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(9))
+                cycle += 1
+            }
+        }
+    }
+}
+
+/// The open island flipping between the player and the weather page.
+struct IslandWeatherDemo: View {
+    @State private var weather = false
+    private static let report = WeatherService.Report(
+        temperature: 24, high: 27, low: 18, symbol: "cloud.sun.fill", fetched: .now, condition: "Partly Cloudy",
+        place: "Cupertino",
+        hours: (1...6).map { offset in
+            WeatherService.Hour(time: Calendar.current.date(byAdding: .hour, value: offset, to: .now) ?? .now,
+                                temperature: 24 - offset / 2, symbol: offset < 3 ? "cloud.sun.fill" : "moon.stars.fill")
+        })
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                if weather {
+                    IslandWeatherPage(report: Self.report)
+                        .padding(.horizontal, 22)
+                        .transition(.push(from: .trailing).combined(with: .opacity))
+                } else {
+                    HStack(spacing: 13) {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(LinearGradient(colors: [.blue, .purple], startPoint: .top, endPoint: .bottom))
+                            .frame(width: 54, height: 54)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Song Title").font(.system(size: 15, weight: .semibold))
+                            Text("Artist").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 24)
+                    .transition(.push(from: .leading).combined(with: .opacity))
+                }
+            }
+            .frame(width: 400, height: 136)
+            .background(RoundedRectangle(cornerRadius: 34, style: .continuous).fill(.black))
+            .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+            HStack(spacing: 18) {
+                Image(systemName: "backward.fill")
+                Image(systemName: "pause.fill")
+                Image(systemName: "forward.fill")
+                Image(systemName: weather ? "music.note" : "cloud.sun.fill")
+                    .symbolRenderingMode(.multicolor)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(.white.opacity(0.15)))
+            }
+            .font(.system(size: 15, weight: .semibold))
+            .padding(.horizontal, 20)
+            .frame(height: 44)
+            .background(Capsule().fill(.black))
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2.2))
+                withAnimation(IslandMotion.open) { weather.toggle() }
+            }
+        }
+    }
+}
+
+/// A screen whose square corners round off.
+struct CornersDemo: View {
+    @State private var round = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.black)
+                .frame(width: 392, height: 222)
+            UnevenRoundedRectangle(topLeadingRadius: 16, bottomLeadingRadius: round ? 16 : 1,
+                                   bottomTrailingRadius: round ? 16 : 1, topTrailingRadius: 16, style: .continuous)
+                .fill(LinearGradient(colors: [Color(red: 0.3, green: 0.5, blue: 1), Color(red: 0.95, green: 0.45, blue: 0.6)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 380, height: 210)
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.5))
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { round.toggle() }
+            }
+        }
+    }
+}
+
+/// Two equalizer curves, one per app.
+struct PerAppEQDemo: View {
+    @State private var spotify = false
+    private static let music: [Double] = [3, 2, 1, 0, -1, 0, 1, 2, 3, 4]
+    private static let spotifyCurve: [Double] = [6, 5, 3, 1, 0, -1, -1, 0, 1, 1]
+
+    var body: some View {
+        VStack(spacing: 18) {
+            HStack(spacing: 0) {
+                ForEach(["Apple Music", "Spotify"], id: \.self) { name in
+                    Text(name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(.white.opacity((name == "Spotify") == spotify ? 0.25 : 0)))
+                }
+            }
+            .padding(3)
+            .background(Capsule().fill(.white.opacity(0.08)))
+            HStack(alignment: .center, spacing: 14) {
+                ForEach(0..<10, id: \.self) { band in
+                    let gain = (spotify ? Self.spotifyCurve : Self.music)[band]
+                    ZStack {
+                        Capsule().fill(.white.opacity(0.15)).frame(width: 5, height: 130)
+                        Circle().fill(spotify ? Color.green : Color.pink)
+                            .frame(width: 16, height: 16)
+                            .offset(y: -gain * 9)
+                    }
+                }
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.8))
+                withAnimation(IslandMotion.playful) { spotify.toggle() }
+            }
+        }
+    }
+}
+
+/// The edge portal widening as something comes in from a phone: the real portal view.
+struct PortalIncomingDemo: View {
+    @State private var state = EdgeState()
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.25), lineWidth: 1.5)
+                .frame(width: 440, height: 230)
+            EdgePortalView(state: state)
+                .frame(width: 300, height: 228)
+                .clipShape(Rectangle())
+        }
+        .frame(width: 440, height: 230)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .task {
+            while !Task.isCancelled {
+                for step in stride(from: 0.0, through: 1.0, by: 0.1) {
+                    state.incoming = "From iPhone · \(Int(step * 100))%"
+                    withAnimation(IslandMotion.quick) { state.near = 0.4 + 0.6 * step }
+                    try? await Task.sleep(for: .milliseconds(260))
+                }
+                state.incoming = nil
+                withAnimation(IslandMotion.playful) { state.swallowed = true }
+                try? await Task.sleep(for: .milliseconds(500))
+                withAnimation(IslandMotion.exit) { state.near = 0 }
+                state.swallowed = false
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+}
+
+/// The lock-screen player moving up and down under the clock, the display staying awake.
+struct LockPlayerDemo: View {
+    @State private var offset: CGFloat = 0
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(LinearGradient(colors: [Color(red: 0.15, green: 0.2, blue: 0.45), Color(red: 0.4, green: 0.2, blue: 0.4)],
+                                     startPoint: .top, endPoint: .bottom))
+                .frame(width: 440, height: 228)
+            Text("9:41")
+                .font(.system(size: 46, weight: .semibold, design: .rounded))
+                .padding(.top, 10)
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 7).fill(.orange).frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Song Title").font(.system(size: 12, weight: .semibold))
+                    Text("Artist").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .frame(width: 200, height: 52)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.top, 108 + offset)
+            Label("Display stays awake while music plays", systemImage: "cup.and.heat.waves.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(.black.opacity(0.4)))
+                .padding(.top, 196)
+        }
+        .task {
+            while !Task.isCancelled {
+                for target: CGFloat in [-30, 34, 0] {
+                    try? await Task.sleep(for: .milliseconds(1100))
+                    withAnimation(IslandMotion.playful) { offset = target }
+                }
+            }
+        }
+    }
+}
+
+/// The real aurora, drawn from a made-up cover.
+struct AuroraDemo: View {
+    private static let cover: NSImage = NSImage(size: CGSize(width: 120, height: 120), flipped: false) { rect in
+        NSColor(red: 0.1, green: 0.1, blue: 0.35, alpha: 1).setFill()
+        rect.fill()
+        for (color, circle) in [(NSColor.systemPink, CGRect(x: 0, y: 50, width: 80, height: 80)),
+                                (NSColor.systemOrange, CGRect(x: 60, y: 60, width: 60, height: 60)),
+                                (NSColor.systemTeal, CGRect(x: 30, y: -10, width: 80, height: 70))] {
+            color.setFill()
+            NSBezierPath(ovalIn: circle).fill()
+        }
+        return true
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            AlbumAurora(artwork: Self.cover, animated: !IslandMotion.reduced)
+            Text("9:41")
+                .font(.system(size: 46, weight: .semibold, design: .rounded))
+                .padding(.top, 14)
+        }
+        .frame(width: 440, height: 228)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// The island taking a message, then a call, from the Android phone, with the phone's
+/// battery button floating beside it. Uses the real cards.
+struct AndroidPhoneDemo: View {
+    @State private var step = 0
+    private static let message = PhoneNotification(
+        id: "demo", package: "messages", app: "Messages", title: "Maya",
+        text: "Running ten minutes late, save me a seat?", time: Date(),
+        actions: [.init(index: 0, title: "Reply", reply: true), .init(index: 1, title: "Mark as read", reply: false)],
+        isCall: false, icon: NSImage(systemSymbolName: "message.fill", accessibilityDescription: nil))
+    private static let call = PhoneNotification(
+        id: "call", package: "dialer", app: "Phone", title: "Maya", text: "Incoming call", time: Date(),
+        actions: [.init(index: 0, title: "Decline", reply: false), .init(index: 1, title: "Answer", reply: false)],
+        isCall: true, icon: nil)
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            PhoneBatteryGlyph(level: 76, charging: step == 2, size: 30)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(.black))
+                .padding(.top, 14)
+            ZStack {
+                RoundedRectangle(cornerRadius: 34, style: .continuous).fill(.black)
+                Group {
+                    if step == 0 {
+                        PhoneNotificationCard(note: Self.message, link: nil, open: {})
+                    } else if step == 1 {
+                        PhoneCallCard(note: Self.call, link: nil)
+                    } else {
+                        HStack(spacing: 10) {
+                            PhoneBatteryGlyph(level: 76, charging: true, size: 34)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Pixel").font(.system(size: 14, weight: .semibold))
+                                Text("Connected over Wi-Fi · 76% charging").font(.system(size: 11)).foregroundStyle(.white.opacity(0.55))
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                }
+                .transition(.materialize(delay: 0.05))
+                .id(step)
+            }
+            .frame(width: 380, height: 130)
+        }
+        .frame(width: 440, height: 230)
+        .environment(\.colorScheme, .dark)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2.6))
+                withAnimation(IslandMotion.activity) { step = (step + 1) % 3 }
+            }
+        }
+    }
+}
+
+/// The Mac's song on the phone, the phone as a trackpad: a phone beside the island.
+struct AndroidRemoteDemo: View {
+    @State private var playing = true
+    @State private var level = 0.4
+
+    var body: some View {
+        HStack(spacing: 28) {
+            VStack(spacing: 10) {
+                Capsule().fill(.black).frame(width: 150, height: 30)
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 5).fill(.orange.gradient).frame(width: 20, height: 20).padding(.leading, 6)
+                    }
+                Image(systemName: "arrow.left.arrow.right").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white.opacity(0.5))
+                Text("Your Mac").font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.6))
+            }
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(Color(white: 0.06))
+                .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(.white.opacity(0.2), lineWidth: 1.5))
+                .frame(width: 128, height: 220)
+                .overlay {
+                    VStack(spacing: 10) {
+                        RoundedRectangle(cornerRadius: 10).fill(.orange.gradient).frame(width: 64, height: 64)
+                        Text("Song Title").font(.system(size: 11, weight: .semibold))
+                        Image(systemName: playing ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 26)).contentTransition(.symbolEffect(.replace))
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 7).fill(.white.opacity(0.12))
+                                RoundedRectangle(cornerRadius: 7).fill(.white).frame(width: geometry.size.width * level)
+                            }
+                        }
+                        .frame(width: 96, height: 18)
+                    }
+                }
+        }
+        .frame(width: 440, height: 230)
+        .environment(\.colorScheme, .dark)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.4))
+                withAnimation(IslandMotion.subtle) { level = level > 0.6 ? 0.3 : 0.8 }
+                try? await Task.sleep(for: .seconds(1.4))
+                withAnimation(IslandMotion.quick) { playing.toggle() }
+            }
+        }
     }
 }

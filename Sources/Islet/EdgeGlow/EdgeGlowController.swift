@@ -13,7 +13,7 @@ final class EdgeGlowController {
     private let store: PlayerStore
     private let settings: AppSettings
     private var locked = LockScreenController.screenIsLockedNow()
-    private var observers: [DistributedObserver] = []
+    private var lockSignal: LockSignal?
     private var screenObserver: NSObjectProtocol?
     /// One window per display it shows on, keyed by display number.
     private var panels: [CGDirectDisplayID: NSPanel] = [:]
@@ -30,10 +30,7 @@ final class EdgeGlowController {
     }
 
     func start() {
-        observers = [
-            DistributedObserver("com.apple.screenIsLocked") { [weak self] _ in self?.setLocked(true) },
-            DistributedObserver("com.apple.screenIsUnlocked") { [weak self] _ in self?.setLocked(false) },
-        ]
+        lockSignal = LockSignal { [weak self] locked in self?.setLocked(locked) }
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in

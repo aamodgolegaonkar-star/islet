@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.0.2</string>
+	<string>2.1</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -32,7 +32,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>25</string>
+	<string>26</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSUIElement</key>
@@ -42,17 +42,18 @@
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Islet's equalizer and live waveform process the music app's sound. Nothing is recorded or saved.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Islet turns Bluetooth on and off from Control Center in the island.</string>
+	<string>Islet turns Bluetooth on and off from Control Center in the island, and connects to the Islet app on your Android phone when there is no Wi-Fi.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_islet-portal._tcp</string>
+		<string>_islet-link._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Islet uses your camera only for Face ID, to recognise your face at the lock screen. Nothing from the camera is saved or leaves your Mac.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Islet uses your local network for Portal, to send photos, files and links between your iPhone and this Mac.</string>
+	<string>Islet uses your local network for Portal and for the Islet app on your Android phone: to send photos, files and links, and to show your phone’s notifications, calls and music on this Mac.</string>
 	<key>NSLocationUsageDescription</key>
 	<string>Islet shows the weather for where you are on the lock screen.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
