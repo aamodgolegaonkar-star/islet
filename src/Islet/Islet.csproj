@@ -12,7 +12,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Islet</RootNamespace>
     <AssemblyName>Islet</AssemblyName>
-    <Version>2.2.1</Version>
+    <Version>0.1.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Per-monitor DPI, server GC off: a small resident footprint. -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
