@@ -105,6 +105,22 @@ public static class Ui
 
 /// A round glyph button that highlights softly under the pointer and shrinks a touch when
 /// pressed, like the Mac island's `.highlight` look. Works in a window that never activates.
+public static class Lifetime
+{
+    /// Listens only while the element is on screen: views are rebuilt as the island changes,
+    /// and a detached view must neither leak nor keep reacting (or animating) unseen.
+    public static void WhileLoaded(this FrameworkElement element, Action add, Action remove)
+    {
+        var attached = false;
+        element.Loaded += (_, _) => { if (!attached) { attached = true; add(); } };
+        element.Unloaded += (_, _) => { if (attached) { attached = false; remove(); } };
+    }
+
+    public static void WhileLoaded(this FrameworkElement element, System.ComponentModel.INotifyPropertyChanged source,
+                                   System.ComponentModel.PropertyChangedEventHandler handler, Action? refresh = null) =>
+        element.WhileLoaded(() => { source.PropertyChanged += handler; refresh?.Invoke(); }, () => source.PropertyChanged -= handler);
+}
+
 public sealed class GlyphButton : Border
 {
     private readonly TextBlock? _glyph;

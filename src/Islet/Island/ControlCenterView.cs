@@ -66,7 +66,8 @@ internal sealed class ControlCenterView : Grid
             var toggle = new Toggle(title, glyph, tint);
             toggle.Set(on());
             toggle.Click += () => { var next = !on(); toggle.Set(next); set(next); };
-            controls.Changed += () => Dispatcher.BeginInvoke(() => toggle.Set(on()));
+            Action changed = () => Dispatcher.BeginInvoke(() => toggle.Set(on()));
+            this.WhileLoaded(() => controls.Changed += changed, () => controls.Changed -= changed);
             return toggle;
         }
         if (controls.HasWifi) toggles.Children.Add(Make("Wi-Fi", Ui.Wifi, () => controls.WifiOn, on => _ = controls.SetWifi(on), Ui.Frozen(Color.FromRgb(10, 132, 255))));
@@ -78,14 +79,16 @@ internal sealed class ControlCenterView : Grid
         var volumeSlider = new IslandSlider(Ui.White) { Value = volume.Muted ? 0 : volume.Level };
         volumeSlider.ValueChanged += v => { if (volume.Muted) volume.SetMuted(false); volume.SetLevel(v); };
         volumeSlider.Editing += on => model.IsInteracting = on;
-        volume.Changed += () => { if (!volumeSlider.IsMouseCaptured) volumeSlider.Value = volume.Muted ? 0 : volume.Level; };
+        Action volumeChanged = () => { if (!volumeSlider.IsMouseCaptured) volumeSlider.Value = volume.Muted ? 0 : volume.Level; };
+        this.WhileLoaded(() => volume.Changed += volumeChanged, () => volume.Changed -= volumeChanged);
         stack.Children.Add(Level(Ui.Volume, volumeSlider));
         if (controls.Brightness is double brightness)
         {
             var brightnessSlider = new IslandSlider(Ui.Frozen(Color.FromRgb(255, 214, 10))) { Value = brightness };
             brightnessSlider.ValueChanged += controls.SetBrightness;
             brightnessSlider.Editing += on => model.IsInteracting = on;
-            controls.BrightnessChanged += v => Dispatcher.BeginInvoke(() => { if (!brightnessSlider.IsMouseCaptured) brightnessSlider.Value = v; });
+            Action<double> brightnessChanged = v => Dispatcher.BeginInvoke(() => { if (!brightnessSlider.IsMouseCaptured) brightnessSlider.Value = v; });
+            this.WhileLoaded(() => controls.BrightnessChanged += brightnessChanged, () => controls.BrightnessChanged -= brightnessChanged);
             stack.Children.Add(Level(Ui.Sun, brightnessSlider));
         }
 

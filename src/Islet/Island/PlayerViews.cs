@@ -38,7 +38,7 @@ public sealed class TransportRow : StackPanel
         Children.Add(previous);
         Children.Add(play);
         Children.Add(next);
-        store.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(PlayerStore.IsPlaying)) Update(); };
+        this.WhileLoaded(store, (_, e) => { if (e.PropertyName == nameof(PlayerStore.IsPlaying)) Update(); }, Update);
         Update();
     }
 
@@ -106,7 +106,8 @@ public sealed class InlineScrubber : Grid
 
         _tick = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromSeconds(1) };
         _tick.Tick += (_, _) => Refresh();
-        store.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(PlayerStore.Snapshot)) Refresh(); };
+        this.WhileLoaded(store, (_, e) => { if (e.PropertyName is nameof(PlayerStore.Snapshot)) Refresh(); }, Refresh);
+        Unloaded += (_, _) => _tick.Stop();
         IsVisibleChanged += (_, _) => Refresh();
         _track.SizeChanged += (_, _) => Refresh();
     }
@@ -130,7 +131,7 @@ public sealed class InlineScrubber : Grid
         _fill.Height = double.NaN;
         _tick.Stop();
         // Next wake: when the next second label changes or the bar moves half a pixel.
-        if (!IsVisible || _preview is not null || _store.Snapshot?.Timing is not { } timing) return;
+        if (!IsVisible || !IsLoaded || _preview is not null || _store.Snapshot?.Timing is not { } timing) return;
         var pixelsPerSecond = duration > 0 ? _track.ActualWidth / duration : 0;
         var steps = (int)Math.Clamp(Math.Ceiling(pixelsPerSecond * 2), 1, 30);
         if (timing.NextTick(now, steps) is not DateTime next) return;
@@ -155,7 +156,8 @@ public sealed class LiveLyricLine : Border
         Child = _text;
         Margin = new Thickness(0, 1, 0, 0);
         _timer.Tick += (_, _) => Refresh();
-        store.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(PlayerStore.Lyrics) or nameof(PlayerStore.Snapshot)) Refresh(); };
+        this.WhileLoaded(store, (_, e) => { if (e.PropertyName is nameof(PlayerStore.Lyrics) or nameof(PlayerStore.Snapshot)) Refresh(); }, Refresh);
+        Unloaded += (_, _) => _timer.Stop();
         IsVisibleChanged += (_, _) => Refresh();
         Refresh();
     }
@@ -177,9 +179,9 @@ public sealed class LiveLyricLine : Border
             _shown = index;
             var line = index is int i ? synced.Lines[i] : null;
             _text.Text = line is null ? "" : line.IsInterlude ? "• • •" : line.Text;
-            Materialize.In(_text, 0);
+            if (IsLoaded && IsVisible) Materialize.In(_text, 0);
         }
-        if (!IsVisible || !_store.IsPlaying) return;
+        if (!IsVisible || !IsLoaded || !_store.IsPlaying) return;
         var nextIndex = (index ?? -1) + 1;
         if (nextIndex >= synced.Lines.Count || _store.Snapshot?.Timing is not { } timing) return;
         // ActiveIndex leads by 0.15 s; wake just as the next line becomes active.
@@ -208,7 +210,7 @@ public sealed class CompactPlayerView : Grid
             bars.Color = store.Accent;
             bars.IsPlaying = store.IsPlaying;
         }
-        store.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(PlayerStore.Artwork) or nameof(PlayerStore.Accent) or nameof(PlayerStore.IsPlaying)) Update(); };
+        this.WhileLoaded(store, (_, e) => { if (e.PropertyName is nameof(PlayerStore.Artwork) or nameof(PlayerStore.Accent) or nameof(PlayerStore.IsPlaying)) Update(); }, Update);
         Update();
         MouseLeftButtonUp += (_, _) => expand();
     }
@@ -261,11 +263,11 @@ public sealed class PlayerCardView : Grid
             bars.Color = store.Accent;
             bars.IsPlaying = store.IsPlaying;
         }
-        store.PropertyChanged += (_, e) =>
+        this.WhileLoaded(store, (_, e) =>
         {
             if (e.PropertyName is nameof(PlayerStore.Artwork) or nameof(PlayerStore.Title) or nameof(PlayerStore.Subtitle)
                 or nameof(PlayerStore.Accent) or nameof(PlayerStore.IsPlaying)) Update();
-        };
+        }, Update);
         Update();
     }
 }

@@ -465,7 +465,6 @@ public sealed class IslandWindow : Window
         Canvas.SetLeft(_capsule, (windowWidth - cw) / 2);
         Canvas.SetTop(_capsule, top + _capsuleY.Value);
         _capsule.Opacity = Math.Clamp(_capsuleOpacity.Value, 0, 1);
-        if (_capsuleRow is not null) _capsuleRow.Opacity = _capsule.Opacity;
 
         Canvas.SetLeft(_privacyDot, left + w + 6);
         Canvas.SetTop(_privacyDot, top + (h - 6) / 2);

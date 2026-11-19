@@ -62,7 +62,7 @@ public sealed class LevelView : Grid
         _value = new Spring(model.Level.Value);
         _value.Moved += Draw;
         _track.SizeChanged += (_, _) => Draw();
-        model.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(IslandModel.Level)) Update(); };
+        this.WhileLoaded(model, (_, e) => { if (e.PropertyName == nameof(IslandModel.Level)) Update(); }, Update);
         MouseLeftButtonDown += (_, e) => { CaptureMouse(); model.IsInteracting = true; DragTo(e.GetPosition(_track).X); e.Handled = true; };
         MouseMove += (_, e) => { if (IsMouseCaptured) DragTo(e.GetPosition(_track).X); };
         MouseLeftButtonUp += (_, _) => { ReleaseMouseCapture(); model.IsInteracting = false; };
