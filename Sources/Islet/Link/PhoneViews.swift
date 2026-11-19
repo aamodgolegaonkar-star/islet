@@ -13,7 +13,11 @@ struct PhoneAlertContent: View {
     var body: some View {
         Group {
             switch alert {
-            case let .notification(note): PhoneNotificationCard(note: note, link: link, open: openPage)
+            case let .notification(note):
+                // Like iPhone Mirroring, a phone notification opens its app in the mirror when it can.
+                PhoneNotificationCard(note: note, link: link) {
+                    if let link, link.mirror.available { link.mirror.open(app: note.package) } else { openPage() }
+                }
             case let .call(note): PhoneCallCard(note: note, link: link)
             case let .pairing(name, code): PhonePairingCard(name: name, code: code, link: link)
             case let .transfer(name, progress, incoming): PhoneTransferCard(name: name, progress: progress, incoming: incoming)
@@ -283,6 +287,98 @@ struct PhoneTransferCard: View {
 
 /// The open island's phone page: battery and link, what the phone plays, its latest
 /// notifications, and quick actions.
+/// A phone Live Activity in the resting island: the app's icon, then its short status, a
+/// running clock, or progress.
+struct PhoneLiveCompact: View {
+    let live: PhoneLive
+
+    var body: some View {
+        HStack(spacing: 8) {
+            PhoneAppIcon(icon: live.icon, size: 18)
+            Spacer(minLength: 0)
+            trailing
+                .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+    }
+
+    @ViewBuilder private var trailing: some View {
+        if let clock = live.chronometer {
+            PhoneLiveClock(start: clock, countdown: live.countdown)
+        } else if let progress = live.progress {
+            HStack(spacing: 6) {
+                Text("\(Int(progress * 100))%").contentTransition(.numericText())
+                PhoneLiveRing(progress: progress)
+            }
+            .animation(IslandMotion.quick, value: progress)
+        } else {
+            Text(live.compactText).truncationMode(.tail)
+        }
+    }
+}
+
+/// A Live Activity's clock: one redraw a second, and only while it shows.
+struct PhoneLiveClock: View {
+    let start: Date
+    let countdown: Bool
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let seconds = max(0, Int((countdown ? start.timeIntervalSince(context.date) : context.date.timeIntervalSince(start)).rounded(.down)))
+            Text(seconds >= 3600 ? String(format: "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+                                 : String(format: "%d:%02d", seconds / 60, seconds % 60))
+        }
+    }
+}
+
+struct PhoneLiveRing: View {
+    let progress: Double
+    var body: some View {
+        ZStack {
+            Circle().stroke(.white.opacity(0.2), lineWidth: 2.5)
+            Circle().trim(from: 0, to: progress).stroke(.white, style: StrokeStyle(lineWidth: 2.5, lineCap: .round)).rotationEffect(.degrees(-90))
+        }
+        .frame(width: 15, height: 15)
+    }
+}
+
+/// A Live Activity on the phone page: what it is, how it's going, and a click to open it.
+struct PhoneLiveRow: View {
+    let live: PhoneLive
+    let open: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            PhoneAppIcon(icon: live.icon, size: 30)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(live.title.isEmpty ? live.app : live.title)
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let clock = live.chronometer {
+                        PhoneLiveClock(start: clock, countdown: live.countdown)
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit()).foregroundStyle(.white.opacity(0.7))
+                    }
+                }
+                if !live.text.isEmpty {
+                    Text(live.text).font(.system(size: 11)).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+                }
+                if let progress = live.progress {
+                    ProgressView(value: progress).progressViewStyle(.linear).tint(.white).controlSize(.mini)
+                } else if live.indeterminate {
+                    ProgressView().progressViewStyle(.linear).tint(.white).controlSize(.mini)
+                }
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.07)))
+        .contentShape(Rectangle())
+        .routedClick("phone.live.row", action: open)
+    }
+}
+
 struct PhonePageView: View {
     let link: LinkController
     let model: IslandModel
@@ -295,6 +391,9 @@ struct PhonePageView: View {
                 header(phone)
                 if let media = phone.media {
                     PhoneMediaRow(media: media, link: link)
+                }
+                if let live = phone.live.first {
+                    PhoneLiveRow(live: live) { link.openLive(live) }
                 }
                 notifications(phone)
                 Spacer(minLength: 0)
@@ -336,7 +435,7 @@ struct PhonePageView: View {
 
     @ViewBuilder
     private func notifications(_ phone: ConnectedPhone) -> some View {
-        let recent = phone.notifications.filter { !$0.isCall }.prefix(phone.media == nil ? 3 : 2)
+        let recent = phone.notifications.filter { !$0.isCall }.prefix((phone.media == nil ? 3 : 2) - (phone.live.isEmpty ? 0 : 1))
         if recent.isEmpty {
             Text("No new notifications")
                 .font(.system(size: 12))
@@ -377,8 +476,8 @@ struct PhonePageView: View {
                              symbol: link.ringing ? "bell.slash.fill" : "bell.and.waves.left.and.right.fill",
                              help: link.ringing ? "Stop ringing" : "Ring your phone", id: "phone.ring", action: link.ringPhone)
             if LinkUSB.adbPath != nil {
-                IslandPillButton(label: link.mirror.running ? "Stop" : "Mirror", symbol: "rectangle.portrait.on.rectangle.portrait.fill",
-                                 help: link.mirror.running ? "Stop mirroring" : "Use your phone on this Mac", id: "phone.mirror",
+                IslandPillButton(label: link.mirror.streaming ? "Stop" : "Mirror", symbol: "rectangle.portrait.on.rectangle.portrait.fill",
+                                 help: link.mirror.streaming ? "Stop mirroring" : "Use your phone on this Mac", id: "phone.mirror",
                                  action: link.mirror.toggle)
             }
             action("Send Files…", symbol: "paperplane.fill", id: "phone.files", run: link.chooseFilesToSend)

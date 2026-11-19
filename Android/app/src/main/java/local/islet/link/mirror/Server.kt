@@ -43,7 +43,9 @@ import kotlin.system.exitProcess
  *
  * Wire (over `adb forward tcp:… localabstract:islet-mirror`, two connections):
  *  - video: status i32 (2 = hello; 0 = waiting for the phone to be unlocked, repeated; 1 = started),
- *    then width i32, height i32, then packets of pts i64, flags i32 (1 config, 2 key frame), size i32, bytes;
+ *    then width i32, height i32, then packets of pts i64, flags i32, size i32, bytes. Flags: 1 codec
+ *    config, 2 key frame (both H.264); 4 sound (48 kHz stereo 16-bit PCM); 8 ended (one byte: 1 the
+ *    phone was used, 2 it was locked), sent just before the server closes;
  *  - control: messages starting with a type byte (see [Control]).
  */
 object Server {
@@ -106,8 +108,8 @@ object Server {
             video.outputStream.write(byteArrayOf(0, 0, 0, 2)); video.outputStream.flush()
             control = server.accept()
             injector = Injector()
-            start(width, height, dpi, bitrate, DataOutputStream(video.outputStream.buffered(256 shl 10)), macName)
             val input = DataInputStream(control.inputStream.buffered())
+            start(width, height, dpi, bitrate, DataOutputStream(video.outputStream.buffered(256 shl 10)), macName, input)
             thread(name = "keyguard") { watchUnlock() }
             while (running) {
                 if (!Control.read(input, injector, displayId)) break
@@ -141,12 +143,23 @@ object Server {
         file.delete()
     }
 
-    private fun start(width: Int, height: Int, dpi: Int, bitrate: Int, out: DataOutputStream, macName: String) {
-        // A locked phone can't be mirrored (see above): wait for it to be unlocked.
+    private fun start(width: Int, height: Int, dpi: Int, bitrate: Int, out: DataOutputStream, macName: String, input: DataInputStream) {
+        // A locked phone can't be mirrored (see above): wait for it to be unlocked, by hand or by
+        // the Mac (Touch ID there, then the phone's PIN typed here, as iPhone Mirroring unlocks).
         while (running && Shell.keyguardLocked() == true) {
             out.writeInt(0); out.flush()
-            SystemClock.sleep(500)
+            val until = SystemClock.uptimeMillis() + 500
+            while (running && SystemClock.uptimeMillis() < until) {
+                if (input.available() > 0) {
+                    when (input.readUnsignedByte()) {
+                        Control.UNLOCK -> { val pin = ByteArray(input.readUnsignedShort()); input.readFully(pin); unlock(String(pin)); pin.fill(0) }
+                        Control.STOP -> { running = false; return }
+                        else -> Unit
+                    }
+                } else SystemClock.sleep(50)
+            }
         }
+        if (!running) return
         out.writeInt(1)
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
@@ -177,7 +190,9 @@ object Server {
         out.writeInt(width)
         out.writeInt(height)
         out.flush()
+        output = out
         thread(name = "encode") { encode(codec, out) }
+        thread(name = "sound") { captureSound() }
 
         // The phone stays awake for the session, so it never times out into the lock screen (which
         // would lock the mirror): plugged in, by staying on while charging; over Wi-Fi, with a long
@@ -195,6 +210,63 @@ object Server {
 
     }
 
+    private var output: DataOutputStream? = null
+    @Volatile private var endReason = 0
+
+    /** Video and sound share the stream; one packet at a time. */
+    private fun write(pts: Long, flags: Int, bytes: ByteArray, size: Int = bytes.size) {
+        val out = output ?: return
+        synchronized(out) {
+            out.writeLong(pts)
+            out.writeInt(flags)
+            out.writeInt(size)
+            out.write(bytes, 0, size)
+            out.flush()
+        }
+    }
+
+    fun pause(paused: Boolean) {
+        val codec = codec ?: return
+        runCatching {
+            codec.setParameters(android.os.Bundle().apply {
+                putInt(MediaCodec.PARAMETER_KEY_SUSPEND, if (paused) 1 else 0)
+                if (!paused) putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+            })
+        }
+    }
+
+    /**
+     * The phone's sound, on the Mac instead of the phone's speaker (Android's remote submix
+     * captures what's playing and silences it here), as raw PCM: about 1.5 Mbit/s.
+     */
+    @SuppressLint("MissingPermission")
+    private fun captureSound() {
+        if (Build.VERSION.SDK_INT < 31) return
+        val format = android.media.AudioFormat.Builder().setSampleRate(48_000)
+            .setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT)
+            .setChannelMask(android.media.AudioFormat.CHANNEL_IN_STEREO).build()
+        val minimum = android.media.AudioRecord.getMinBufferSize(48_000, android.media.AudioFormat.CHANNEL_IN_STEREO, android.media.AudioFormat.ENCODING_PCM_16BIT)
+        val recorder = runCatching {
+            android.media.AudioRecord.Builder().setContext(Shell.context)
+                .setAudioSource(android.media.MediaRecorder.AudioSource.REMOTE_SUBMIX)
+                .setAudioFormat(format).setBufferSizeInBytes(maxOf(minimum, 16_384) * 2).build()
+                .also { it.startRecording() }
+        }.onFailure { log("sound: $it") }.getOrNull() ?: return
+        val buffer = ByteArray(3_840) // 20 ms
+        try {
+            while (running) {
+                val count = recorder.read(buffer, 0, buffer.size)
+                if (count > 0) write(System.nanoTime() / 1000, 4, buffer, count)
+                else if (count < 0) break
+            }
+        } catch (error: Throwable) {
+            log("sound ended: $error")
+        } finally {
+            runCatching { recorder.stop() }
+            recorder.release()
+        }
+    }
+
     private fun encode(codec: MediaCodec, out: DataOutputStream) {
         val info = MediaCodec.BufferInfo()
         try {
@@ -209,11 +281,7 @@ object Server {
                 buffer.position(info.offset)
                 buffer.get(bytes)
                 codec.releaseOutputBuffer(index, false)
-                out.writeLong(info.presentationTimeUs)
-                out.writeInt(flags)
-                out.writeInt(bytes.size)
-                out.write(bytes)
-                out.flush()
+                write(info.presentationTimeUs, flags, bytes)
             }
         } catch (error: Throwable) {
             log("video ended: $error")
@@ -222,6 +290,20 @@ object Server {
             // Unblock the control reader so the whole server winds down.
             Control.interrupt()
         }
+    }
+
+    /** Wakes the phone, brings up its PIN pad and types the PIN there (display 0), then Enter. */
+    private fun unlock(pin: String) {
+        log("unlocking")
+        injector.key(KeyEvent.KEYCODE_WAKEUP, 0)
+        SystemClock.sleep(250)
+        Shell.run("wm", "dismiss-keyguard")
+        SystemClock.sleep(700)
+        injector.text(pin, 0)
+        SystemClock.sleep(120)
+        injector.key(KeyEvent.KEYCODE_ENTER, 0)
+        // Wait for it to take; the loop above notices either way.
+        repeat(20) { if (Shell.keyguardLocked() == false) return; SystemClock.sleep(150) }
     }
 
     /**
@@ -234,8 +316,8 @@ object Server {
         val stopFile = java.io.File(STOP_FILE)
         while (running) {
             SystemClock.sleep(400)
-            if (Shell.keyguardLocked() == true) { log("phone locked"); running = false; Control.interrupt() }
-            if (stopFile.exists() && stopFile.lastModified() >= started) { log("phone used"); running = false; Control.interrupt() }
+            if (Shell.keyguardLocked() == true) { log("phone locked"); endReason = 2; running = false; Control.interrupt() }
+            if (stopFile.exists() && stopFile.lastModified() >= started) { log("phone used"); endReason = 1; running = false; Control.interrupt() }
         }
     }
 
@@ -245,6 +327,8 @@ object Server {
     private fun stop() {
         Control.done()
         Thread.interrupted() // a stop can arrive as an interrupt; don't let it cancel the clean-up commands
+        // Tell the Mac why, so it can say "Phone in use" rather than just disconnecting.
+        if (endReason != 0) runCatching { write(0, 8, byteArrayOf(endReason.toByte())) }
         runCatching { display?.release() }
         display = null
         runCatching { codec?.stop() }
@@ -271,6 +355,12 @@ object Control {
     const val HOME = 5
     const val BACK = 6
     const val STOP = 7
+    const val LAUNCH = 8
+    const val PAUSE = 9
+    const val RESUME = 10
+    const val SWITCHER = 11
+    const val SEARCH = 12
+    const val UNLOCK = 13
 
     @Volatile private var reader: Thread? = null
 
@@ -278,6 +368,16 @@ object Control {
 
     /** Clean-up has begun: later interrupts must not cut its commands short. */
     fun done() { reader = null }
+
+    private fun home(display: Int, mode: String) =
+        Shell.run("am", "start", "--display", "$display", "-n", "local.islet.link/.mirror.MirrorHome", "--es", "mode", mode)
+
+    /** Opens an app on the mirror (a phone notification clicked on the Mac). Launched through the
+     *  mirror's home screen, which also remembers it for the app switcher. */
+    private fun launch(pkg: String, display: Int) {
+        if (!Regex("[A-Za-z0-9_.]+").matches(pkg)) return
+        Shell.run("am", "start", "--display", "$display", "-n", "local.islet.link/.mirror.MirrorHome", "--es", "launch", pkg)
+    }
 
     fun read(input: DataInputStream, injector: Injector, display: Int): Boolean {
         reader = Thread.currentThread()
@@ -287,9 +387,14 @@ object Control {
             SCROLL -> injector.scroll(input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat(), display)
             KEY -> { val action = input.readUnsignedByte(); injector.keyEvent(action, input.readInt(), input.readInt(), display) }
             TEXT -> { val bytes = ByteArray(input.readUnsignedShort()); input.readFully(bytes); injector.text(String(bytes), display) }
-            HOME -> Shell.run("am", "start", "--display", "$display", "-n", "local.islet.link/.mirror.MirrorHome")
+            HOME -> home(display, "home")
             BACK -> injector.key(KeyEvent.KEYCODE_BACK, display)
             STOP -> return false
+            LAUNCH -> { val bytes = ByteArray(input.readUnsignedShort()); input.readFully(bytes); launch(String(bytes), display) }
+            PAUSE -> Server.pause(true)
+            RESUME -> Server.pause(false)
+            SWITCHER -> home(display, "recents")
+            SEARCH -> home(display, "search")
             else -> return false
         }
         return true

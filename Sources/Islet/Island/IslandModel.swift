@@ -276,6 +276,8 @@ final class IslandModel {
     var cameraActive = false
     /// A running timer's end; the compact island shows the countdown.
     var timerEnd: Date?
+    /// The phone's newest Live Activity, which the resting island shows when nothing plays here.
+    var phoneLive: PhoneLive? { link?.phone?.live.first }
     /// Files kept on the island.
     @ObservationIgnored let shelf = ShelfStore()
     /// A file drag ended on the shelf.

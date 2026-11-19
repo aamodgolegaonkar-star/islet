@@ -37,12 +37,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Laptop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,39 +77,119 @@ private fun finishWithDisplay(activity: ComponentActivity) {
     })
 }
 
-/** The mirrored phone's home screen: every app, on the mirror's own display. */
+/**
+ * The mirrored phone's home screen, on the mirror's own display: every app, a search field
+ * (⌘3 on the Mac), and an app switcher of what's been opened this session (⌘2).
+ */
 class MirrorHome : ComponentActivity() {
-    private data class App(val label: String, val intent: Intent, val icon: Bitmap?)
+    private data class App(val label: String, val pkg: String, val intent: Intent, val icon: Bitmap?)
+
+    private var mode by mutableStateOf("home")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         finishWithDisplay(this)
+        handle(intent)
         setContent {
             IsletTheme {
                 var apps by remember { mutableStateOf<List<App>>(emptyList()) }
                 remember { thread { apps = loadApps() } }
                 Box(Modifier.fillMaxSize().background(Islet.background)) {
-                    LazyVerticalGrid(
-                        GridCells.Fixed(4),
-                        Modifier.fillMaxSize().statusBarsPadding(),
-                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 28.dp, bottom = 40.dp),
-                        verticalArrangement = Arrangement.spacedBy(22.dp),
-                    ) {
-                        items(apps, key = { it.intent.component.toString() }) { app ->
-                            Column(Modifier.pressable(0.92f) { open(app.intent) }, horizontalAlignment = Alignment.CenterHorizontally) {
-                                val image = remember(app) { app.icon?.asImageBitmap() }
-                                if (image != null) Image(image, app.label, Modifier.size(56.dp))
-                                else Box(Modifier.size(56.dp).background(Islet.cardHigh, CircleShape))
-                                Spacer(Modifier.height(6.dp))
-                                Text(app.label, color = Islet.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                            }
-                        }
+                    when (mode) {
+                        "recents" -> Switcher(apps.filter { it.pkg in recents }.sortedBy { recents.indexOf(it.pkg) })
+                        else -> Grid(apps, searching = mode == "search")
                     }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handle(intent)
+    }
+
+    private fun handle(intent: Intent) {
+        mode = intent.getStringExtra("mode") ?: "home"
+        intent.getStringExtra("launch")?.let { pkg ->
+            packageManager.getLaunchIntentForPackage(pkg)?.let { open(pkg, it) }
+        }
+    }
+
+    @Composable
+    private fun Grid(apps: List<App>, searching: Boolean) {
+        var query by remember { mutableStateOf("") }
+        val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+        LaunchedEffect(searching) { if (searching) runCatching { focus.requestFocus() } else query = "" }
+        val shown = if (query.isBlank()) apps else apps.filter { it.label.contains(query.trim(), ignoreCase = true) }
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+            androidx.compose.foundation.text.BasicTextField(
+                query, { query = it },
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(color = Islet.text, fontSize = 17.sp),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(Islet.text),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Go),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = { shown.firstOrNull()?.let { open(it.pkg, it.intent) } }),
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 18.dp).fillMaxWidth()
+                    .background(Islet.card, androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp).focusRequester(focus),
+                decorationBox = { field ->
+                    if (query.isEmpty()) Text("Search apps", color = Islet.tertiary, fontSize = 17.sp)
+                    field()
+                },
+            )
+            LazyVerticalGrid(
+                GridCells.Fixed(4),
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 22.dp, bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(22.dp),
+            ) {
+                items(shown, key = { it.intent.component.toString() }) { app ->
+                    Column(Modifier.pressable(0.92f) { open(app.pkg, app.intent) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                        AppImage(app, 56.dp)
+                        Spacer(Modifier.height(6.dp))
+                        Text(app.label, color = Islet.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        }
+    }
+
+    /** What was opened this session, newest first, as big cards. */
+    @Composable
+    private fun Switcher(apps: List<App>) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 28.dp)) {
+            Text("Recent", style = Islet.title, modifier = Modifier.padding(start = 24.dp, bottom = 20.dp))
+            if (apps.isEmpty()) {
+                Text("Apps you open while mirroring appear here.", color = Islet.secondary, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 24.dp))
+            }
+            androidx.compose.foundation.lazy.LazyRow(
+                contentPadding = PaddingValues(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                items(apps.size) { index ->
+                    val app = apps[index]
+                    Column(
+                        Modifier.size(200.dp, 360.dp).background(Islet.card, androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
+                            .pressable(0.95f) { open(app.pkg, app.intent) }.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                    ) {
+                        AppImage(app, 88.dp)
+                        Spacer(Modifier.height(16.dp))
+                        Text(app.label, color = Islet.text, fontSize = 16.sp, maxLines = 2, textAlign = TextAlign.Center)
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun AppImage(app: App, size: androidx.compose.ui.unit.Dp) {
+        val image = remember(app) { app.icon?.asImageBitmap() }
+        if (image != null) Image(image, app.label, Modifier.size(size))
+        else Box(Modifier.size(size).background(Islet.cardHigh, CircleShape))
     }
 
     private fun loadApps(): List<App> {
@@ -117,8 +200,7 @@ class MirrorHome : ComponentActivity() {
             .map { info: ResolveInfo ->
                 val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
                     .setClassName(info.activityInfo.packageName, info.activityInfo.name)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                App(info.loadLabel(pm).toString(), intent, runCatching {
+                App(info.loadLabel(pm).toString(), info.activityInfo.packageName, intent, runCatching {
                     val drawable = info.loadIcon(pm)
                     (drawable as? BitmapDrawable)?.bitmap?.scale(144, 144) ?: createBitmap(144, 144).also {
                         drawable.setBounds(0, 0, 144, 144); drawable.draw(android.graphics.Canvas(it))
@@ -128,9 +210,18 @@ class MirrorHome : ComponentActivity() {
             .sortedBy { it.label.lowercase() }
     }
 
-    private fun open(intent: Intent) {
+    private fun open(pkg: String, intent: Intent) {
         val options = ActivityOptions.makeBasic().setLaunchDisplayId(display?.displayId ?: return)
-        runCatching { startActivity(intent, options.toBundle()) }
+        recents.remove(pkg)
+        recents.add(0, pkg)
+        val launch = Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        runCatching { startActivity(launch, options.toBundle()) }
+        mode = "home"
+    }
+
+    companion object {
+        /** Packages opened on the mirror, newest first; it lasts as long as the app's process. */
+        private val recents = mutableListOf<String>()
     }
 }
 

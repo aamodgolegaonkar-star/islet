@@ -391,44 +391,118 @@ final class LinkUSB {
         guard let adb = Self.adbPath else { return false }
         // Plugged in, the cable is the one connection: drop any Wi-Fi one (it would make adb ambiguous).
         _ = await Self.run(adb, ["disconnect"])
-        let output = await Self.run(adb, ["reverse", "tcp:\(Link.port)", "tcp:\(Link.port)"])
+        let output = await Self.onUSB(["reverse", "tcp:\(Link.port)", "tcp:\(Link.port)"])
         forwarding = output.status == 0
         lastResult = output.text
         return forwarding
     }
 
     /// Where wireless Phone Mirroring finds the phone: its Wi-Fi address, saved while it was plugged in.
-    static let wirelessPort = 5555
     static var wirelessHost: String? { UserDefaults.standard.string(forKey: "mirrorWirelessHost") }
+    /// This Mac has been paired with the phone's Wireless debugging (Settings → Android Phone).
+    static var wirelessPaired: Bool { UserDefaults.standard.bool(forKey: "mirrorWirelessPaired") }
 
-    /// Lets Phone Mirroring work over Wi-Fi later: adb listens on the network too (until the
-    /// phone restarts; plugging it in turns it back on). The phone still asks before trusting a
-    /// new computer, as over USB.
+    /// Wireless Phone Mirroring uses Android's Wireless debugging, which is encrypted and paired
+    /// once with a code. Plugged in, Islet lets its phone app switch that on when the Mac asks,
+    /// and closes the plain, unencrypted adb port an earlier version opened (`adb tcpip`).
     private func prepareWireless() async {
         guard let adb = Self.adbPath else { return }
-        let address = await Self.run(adb, ["shell", "ip", "-f", "inet", "addr", "show", "wlan0"]).text
+        let address = await Self.onUSB(["shell", "ip", "-f", "inet", "addr", "show", "wlan0"]).text
         if let match = address.firstMatch(of: /inet (\d+\.\d+\.\d+\.\d+)\//) {
             UserDefaults.standard.set(String(match.1), forKey: "mirrorWirelessHost")
         }
-        let port = await Self.run(adb, ["shell", "getprop", "service.adb.tcp.port"]).text
-        guard port != "\(Self.wirelessPort)" else { return }
-        _ = await Self.run(adb, ["tcpip", "\(Self.wirelessPort)"])
-        // adb restarts on the phone, which drops the cable's reverse port: set it up again.
-        for _ in 0 ..< 10 {
-            try? await Task.sleep(for: .seconds(1))
-            if await reverse() { return }
+        _ = await Self.onUSB(["shell", "pm", "grant", "local.islet.link", "android.permission.WRITE_SECURE_SETTINGS"])
+        let port = await Self.onUSB(["shell", "getprop", "service.adb.tcp.port"]).text
+        if !port.isEmpty, port != "0", port != "-1" {
+            _ = await Self.onUSB(["usb"])
+            // adb restarts on the phone, which drops the cable's reverse port: set it up again.
+            for _ in 0 ..< 10 {
+                try? await Task.sleep(for: .seconds(1))
+                if await reverse() { break }
+            }
         }
+        // A phone that already trusts this Mac over Wireless debugging needs no pairing code.
+        guard !Self.wirelessPaired else { return }
+        _ = await Self.onUSB(["shell", "settings", "put", "global", "adb_wifi_enabled", "1"])
+        if let device = await Self.wirelessDevice() {
+            UserDefaults.standard.set(true, forKey: "mirrorWirelessPaired")
+            _ = await Self.run(adb, ["disconnect", device])
+        }
+    }
+
+    /// Pairs this Mac with the phone's Wireless debugging: finds its pairing service on the
+    /// network and hands adb the six-digit code shown on the phone.
+    static func pairWireless(code: String) async -> (ok: Bool, message: String) {
+        guard let adb = adbPath else { return (false, "Android platform-tools aren't installed.") }
+        for _ in 0 ..< 20 {
+            let services = await run(adb, ["mdns", "services"]).text
+            if let line = services.split(separator: "\n").first(where: { $0.contains("_adb-tls-pairing._tcp") }),
+               let endpoint = line.split(whereSeparator: \.isWhitespace).last {
+                let result = await run(adb, ["pair", String(endpoint), code])
+                if result.text.localizedCaseInsensitiveContains("successfully paired") {
+                    UserDefaults.standard.set(true, forKey: "mirrorWirelessPaired")
+                    if let host = endpoint.split(separator: ":").first { UserDefaults.standard.set(String(host), forKey: "mirrorWirelessHost") }
+                    return (true, "Paired. Phone Mirroring now works over Wi-Fi.")
+                }
+                return (false, result.text.isEmpty ? "Pairing didn't work. Check the code and try again." : result.text)
+            }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        return (false, "Couldn't find the phone's pairing screen. On the phone, tap Pair device with pairing code, and keep it open.")
+    }
+
+    /// The phone's encrypted Wireless debugging connection, once it's paired and switched on:
+    /// adb usually connects by itself; otherwise it's dialled from the address it advertises.
+    static func wirelessDevice() async -> String? {
+        guard let adb = adbPath else { return nil }
+        for attempt in 0 ..< 16 {
+            let devices = await run(adb, ["devices"]).text.split(separator: "\n").dropFirst()
+                .map { $0.split(whereSeparator: \.isWhitespace) }
+            if let tls = devices.first(where: { $0.count >= 2 && $0[1] == "device" && $0[0].contains("_adb-tls-connect") }) {
+                return String(tls[0])
+            }
+            if attempt % 3 == 2 {
+                let services = await run(adb, ["mdns", "services"]).text
+                if let line = services.split(separator: "\n").first(where: { $0.contains("_adb-tls-connect._tcp") }),
+                   let endpoint = line.split(whereSeparator: \.isWhitespace).last {
+                    let result = await run(adb, ["connect", String(endpoint)])
+                    if result.text.contains("connected to") { return String(endpoint) }
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        return nil
     }
 
     /// Installs the app over USB (Settings → Phone).
     func install(apk: URL) async -> (ok: Bool, message: String) {
         guard let adb = Self.adbPath else { return (false, "Android platform-tools aren't installed.") }
-        let output = await Self.run(adb, ["install", "-r", apk.path])
+        let output = await Self.onUSB(["install", "-r", apk.path])
         if output.status == 0 { _ = await reverse() }
         return (output.status == 0, output.status == 0 ? "Installed" : output.text)
     }
 
     var phoneAttached: Bool { forwarding }
+
+    /// The phone on the cable, by serial: with Wi-Fi debugging connected too, a bare adb
+    /// command would be ambiguous.
+    static func usbSerial() async -> String? {
+        guard let adb = adbPath else { return nil }
+        let lines = await run(adb, ["devices"]).text.split(separator: "\n").dropFirst()
+        for line in lines {
+            let fields = line.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard fields.count >= 2, fields[1] == "device" else { continue }
+            if !fields[0].contains(":"), !fields[0].contains("_adb-tls") { return fields[0] }
+        }
+        return nil
+    }
+
+    /// An adb command for the phone on the cable.
+    static func onUSB(_ arguments: [String]) async -> (status: Int32, text: String) {
+        guard let adb = adbPath else { return (-1, "") }
+        let target = await usbSerial().map { ["-s", $0] } ?? []
+        return await run(adb, target + arguments)
+    }
 
     nonisolated static func run(_ tool: String, _ arguments: [String]) async -> (status: Int32, text: String) {
         await withCheckedContinuation { continuation in

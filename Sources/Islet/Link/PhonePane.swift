@@ -73,14 +73,16 @@ struct PhonePane: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Phone Mirroring")
-                        Text("Use your phone in a window on this Mac: click to tap, scroll, and type with the keyboard. ⌘1 goes home, ⌘[ goes back. While it's mirrored the phone shows that it's in use; using it ends mirroring and locks it. Start with the phone unlocked. Plug it in once (and again after it restarts) and it also works over Wi-Fi.")
+                        Text("Use your phone in a window on this Mac, with its sound: click to tap, swipe, and type with the keyboard. ⌘1 Home, ⌘2 App Switcher, ⌘3 Search. Drop files on it to send them. While it's mirrored the phone shows that it's in use; using it ends mirroring and locks it.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button(link.mirror.running ? "Stop" : "Mirror Phone") { link.mirror.toggle() }
+                    Button(link.mirror.streaming ? "Stop" : "Mirror Phone") { link.mirror.toggle() }
                         .disabled(LinkUSB.adbPath == nil)
                 }
             }
+
+            MirrorSetup(link: link)
 
             Section {
                 Toggle("Show notifications in the island", isOn: $settings.showNotifications)
@@ -177,5 +179,78 @@ struct PhonePane: View {
             return "Connected over \(phone.transport.label)" + (phone.battery.map { " · \($0)%" } ?? "")
         }
         return device.model.isEmpty ? "Not connected" : "\(device.model) · Not connected"
+    }
+}
+
+/// Phone Mirroring's two one-time setups: pairing for encrypted Wi-Fi (Android's Wireless
+/// debugging), and the phone's PIN for unlocking it with Touch ID, as iPhone Mirroring does.
+private struct MirrorSetup: View {
+    let link: LinkController
+    @State private var code = ""
+    @State private var pairing = false
+    @State private var result: String?
+    @State private var paired = LinkUSB.wirelessPaired
+    @State private var pin = ""
+    @State private var hasPIN = PhonePIN.stored
+
+    var body: some View {
+        Section {
+            if paired {
+                HStack {
+                    Label("Paired over Wi-Fi, encrypted", systemImage: "lock.fill")
+                    Spacer()
+                    Button("Pair Again") { paired = false; result = nil }
+                }
+            } else {
+                Text("To mirror without the cable, pair once: on the phone, Wireless debugging opens; tap Pair device with pairing code, then type the six-digit code here. The phone and this Mac need to be on the same Wi-Fi.")
+                    .font(.callout).foregroundStyle(.secondary)
+                HStack {
+                    Button("Show on Phone") { link.askPhone("wireless.pair") }
+                        .disabled(link.phone == nil)
+                    Spacer()
+                    TextField("Code", text: $code)
+                        .frame(width: 90)
+                        .monospacedDigit()
+                        .onChange(of: code) { _, new in code = String(new.filter(\.isNumber).prefix(6)) }
+                    Button(pairing ? "Pairing…" : "Pair") {
+                        pairing = true
+                        Task {
+                            let outcome = await LinkUSB.pairWireless(code: code)
+                            result = outcome.message
+                            paired = outcome.ok
+                            pairing = false
+                            code = ""
+                        }
+                    }
+                    .disabled(code.count != 6 || pairing)
+                }
+                if let result { Text(result).font(.callout).foregroundStyle(.secondary) }
+            }
+        } header: {
+            Text("Mirroring over Wi-Fi")
+        }
+
+        Section {
+            Text("Mirroring needs the phone unlocked. Save its PIN here and Islet unlocks it for you after Touch ID or your Mac password, so the phone can stay in your pocket. The PIN stays in this Mac's keychain and only goes to the phone over USB or the encrypted Wi-Fi connection.")
+                .font(.callout).foregroundStyle(.secondary)
+            if hasPIN {
+                HStack {
+                    Label("Phone PIN saved", systemImage: "touchid")
+                    Spacer()
+                    Button("Remove") { PhonePIN.delete(); hasPIN = false }
+                }
+            } else {
+                HStack {
+                    SecureField("Phone PIN", text: $pin)
+                    Button("Save") {
+                        hasPIN = PhonePIN.save(pin)
+                        pin = ""
+                    }
+                    .disabled(pin.count < 4)
+                }
+            }
+        } header: {
+            Text("Unlock with Touch ID")
+        }
     }
 }

@@ -66,6 +66,28 @@ enum PhoneAlert: Equatable {
 }
 
 /// The phone that is connected now.
+/// A Live Activity on the phone: an ongoing notification tracking something as it happens
+/// (a ride, a delivery, directions, a stopwatch, a download).
+struct PhoneLive: Identifiable, Equatable {
+    let id: String
+    let package: String
+    let app: String
+    var title: String
+    var text: String
+    /// The app's own short status for small spaces (Android 16), if it gave one.
+    var short: String
+    /// 0…1, or nil without a progress bar.
+    var progress: Double?
+    var indeterminate: Bool
+    /// A running clock from `when`, counting up (or down to it).
+    var chronometer: Date?
+    var countdown: Bool
+    var icon: NSImage?
+
+    /// What fits beside the icon in the closed island, unless a clock or progress shows instead.
+    var compactText: String { short.isEmpty ? (text.isEmpty ? title : text) : short }
+}
+
 struct ConnectedPhone: Equatable {
     var id: String
     var name: String
@@ -76,6 +98,8 @@ struct ConnectedPhone: Equatable {
     var network: String?
     var media: PhoneMedia?
     var notifications: [PhoneNotification] = []
+    /// Newest first.
+    var live: [PhoneLive] = []
 }
 
 /// Islet Link on the Mac: finds and pairs the Android app, keeps one live connection per
@@ -149,6 +173,10 @@ final class LinkController {
         tcp.start(name: macName, macID: macID)
         problem = tcp.problem
         usb.start()
+        if let name = devices.first?.name { mirror.phoneName = name }
+        mirror.usbAttached = { [weak self] in self?.usb.phoneAttached ?? false }
+        mirror.sendFiles = { [weak self] urls in _ = self?.send(files: urls) }
+        mirror.requestWireless = { [weak self] in self?.askPhone("wireless.on") }
         watchMacMusic()
         watchMacStatus()
         // Closes links that went quiet (the phone pings every 25 s).
@@ -221,6 +249,7 @@ final class LinkController {
             phone?.transport = best
         } else {
             phone = ConnectedPhone(id: session.phoneID, name: session.phoneName, model: session.phoneModel, transport: best)
+            mirror.phoneName = session.phoneName
         }
         session.send(statusMessage())
         sentArtRevision = -1
@@ -317,6 +346,11 @@ final class LinkController {
             phone?.network = fields["network"] as? String
         case "notif.post":
             posted(fields, icon: message.body)
+        case "live.post":
+            livePosted(fields, icon: message.body)
+        case "live.remove":
+            guard let key = fields["key"] as? String else { return }
+            phone?.live.removeAll { $0.id == key }
         case "notif.remove":
             guard let key = fields["key"] as? String else { return }
             let call = phone?.notifications.first { $0.id == key && $0.isCall }
@@ -349,8 +383,8 @@ final class LinkController {
         case "find":
             LinkRemote.ring()
         case "mirror.stop":
-            // "Stop Mirroring" on the phone, or the phone was picked up.
-            mirror.stop()
+            // "Stop Mirroring" on the phone, or the phone was picked up: the window says so.
+            mirror.phoneUsed()
         case "unpair":
             if let device = devices.first(where: { $0.id == session.phoneID }) { forget(device) }
         default:
@@ -388,6 +422,28 @@ final class LinkController {
         } else if alert, settings.showNotifications {
             island?.showPhone(.notification(note), for: .seconds(6))
         }
+    }
+
+    private func livePosted(_ fields: [String: Any], icon: Data) {
+        guard let key = fields["key"] as? String else { return }
+        let package = fields["pkg"] as? String ?? ""
+        if !icon.isEmpty, let image = NSImage(data: icon) { icons[package] = image }
+        let progress = (fields["progress"] as? NSNumber)?.doubleValue ?? -1
+        let when = ((fields["when"] as? NSNumber)?.doubleValue ?? 0) / 1000
+        let live = PhoneLive(
+            id: key, package: package, app: fields["app"] as? String ?? "",
+            title: fields["title"] as? String ?? "", text: fields["text"] as? String ?? "",
+            short: fields["short"] as? String ?? "",
+            progress: progress >= 0 ? min(progress, 1) : nil, indeterminate: fields["indeterminate"] as? Bool ?? false,
+            chronometer: (fields["chronometer"] as? Bool ?? false) && when > 0 ? Date(timeIntervalSince1970: when) : nil,
+            countdown: fields["countdown"] as? Bool ?? false, icon: icons[package])
+        guard var phone else { return }
+        if let index = phone.live.firstIndex(where: { $0.id == key }) {
+            phone.live[index] = live
+        } else {
+            phone.live.insert(live, at: 0)
+        }
+        self.phone = phone
     }
 
     private func phoneMedia(_ fields: [String: Any], art: Data) {
@@ -489,6 +545,15 @@ final class LinkController {
     /// Find My Phone is ringing (the phone stops by itself after a minute).
     private(set) var ringing = false
     @ObservationIgnored private var ringTask: Task<Void, Never>?
+
+    /// A Live Activity clicked: its app opens in Phone Mirroring when it can, as on iPhone;
+    /// otherwise the phone page.
+    func openLive(_ live: PhoneLive) {
+        if mirror.available { mirror.open(app: live.package) } else { island?.openPhonePage() }
+    }
+
+    /// A bare request to the phone app ("wireless.on", "wireless.pair").
+    func askPhone(_ type: String) { active?.send(LinkMessage(type)) }
 
     func ringPhone() {
         ringTask?.cancel()
@@ -661,6 +726,15 @@ final class LinkController {
             island?.showPhone(.pairing(name: "Pixel 9 Pro", code: "482 913"), for: .seconds(20))
         case "transfer":
             island?.showPhone(.transfer(name: "PXL_20261118_0912.jpg", progress: 0.62, incoming: true), for: .seconds(5))
+        case "live":
+            livePosted(["key": "live.ride", "pkg": "com.ubercab", "app": "Uber", "title": "Driver arriving",
+                        "text": "Ahmed · White Camry · 3 min away", "short": "3 min", "progress": 0.7], icon: Data())
+            if let icon { phone?.live[0].icon = icon }
+        case "live.clock":
+            livePosted(["key": "live.clock", "pkg": "com.google.android.deskclock", "app": "Clock", "title": "Stopwatch",
+                        "text": "", "chronometer": true, "when": (Date().timeIntervalSince1970 - 75) * 1000], icon: Data())
+        case "live.off":
+            phone?.live.removeAll()
         case "off":
             phone = nil
             pendingPairing = nil

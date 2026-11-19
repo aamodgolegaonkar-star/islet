@@ -290,7 +290,7 @@ final class IslandController {
     }
 
     private func islandScreenRect() -> CGRect {
-        let busy = hasTrack || model.timerEnd != nil
+        let busy = hasTrack || model.timerEnd != nil || model.phoneLive != nil
         let bubble = model.link.map { $0.phone != nil || !$0.devices.isEmpty } ?? false
         let local = model.metrics.islandRect(for: model.presentation, hasTrack: busy, activity: model.activity,
                                              phoneBubble: bubble)
@@ -431,6 +431,10 @@ final class IslandController {
                       !model.shelf.items.isEmpty {
                 // Nothing playing: hovering opens the shelf if it holds files.
                 schedule(.shelf, after: .milliseconds(60))
+            } else if model.presentation == .compact, settings.expandOnHover, !hasTrack,
+                      model.timerEnd == nil, model.activity == nil, model.phoneLive != nil {
+                // A Live Activity from the phone: the phone page has its details.
+                schedule(.phone, after: .milliseconds(60))
             } else if model.presentation == .compact, settings.expandOnHover, !hasTrack,
                       model.timerEnd == nil, model.activity == nil {
                 // Nothing playing and nothing on the shelf: Control Center.

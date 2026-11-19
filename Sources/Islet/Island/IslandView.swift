@@ -30,9 +30,13 @@ struct IslandView: View {
     }
     /// The compact island is showing a running timer.
     private var showsTimer: Bool { model.timerEnd != nil && activity == nil && model.presentation == .compact }
+    /// The phone's Live Activity holds the resting island when nothing plays on the Mac.
+    private var showsLive: Bool {
+        model.phoneLive != nil && !hasTrack && model.timerEnd == nil && activity == nil && model.presentation == .compact
+    }
     /// The resting island shows the clock (Settings → Island) when nothing else needs it.
     private var showsClock: Bool {
-        settings.islandClock && !hasTrack && model.timerEnd == nil && activity == nil && model.presentation == .compact
+        settings.islandClock && !hasTrack && model.timerEnd == nil && model.phoneLive == nil && activity == nil && model.presentation == .compact
     }
     private var style: IslandStyle { settings.islandStyle }
     private var hovered: Bool { model.isHovered && model.presentation == .compact && activity == nil }
@@ -40,9 +44,9 @@ struct IslandView: View {
     var body: some View {
         let metrics = model.metrics
         // A running timer gives the compact island something to show even without music.
-        let busy = hasTrack || model.timerEnd != nil || showsClock
+        let busy = hasTrack || model.timerEnd != nil || showsClock || showsLive
         let sized = metrics.size(for: model.presentation, hasTrack: busy, activity: activity)
-        let card = showsTimer || showsClock ? CGSize(width: metrics.timerWidth, height: sized.height) : sized
+        let card = showsTimer || showsClock || showsLive ? CGSize(width: metrics.timerWidth, height: sized.height) : sized
         let radii = metrics.cornerRadii(for: model.presentation, hasTrack: busy, activity: activity)
         // A notch is black hardware, so the compact island stays black over it.
         let glass = style.isGlass && !(metrics.hasNotch && !isExpanded && !isShelf && !isControls && !isPhone && activity?.isCard != true)
@@ -242,6 +246,12 @@ struct IslandView: View {
         } else if let end = model.timerEnd {
             TimerCompactContent(end: end)
                 .frame(width: metrics.timerWidth, height: metrics.compactHeight)
+                .transition(.materialize(delay: 0.04))
+        } else if showsLive, let live = model.phoneLive, let link = model.link {
+            PhoneLiveCompact(live: live)
+                .frame(width: metrics.timerWidth, height: metrics.compactHeight)
+                .contentShape(Rectangle())
+                .routedClick("phone.live") { link.openLive(live) }
                 .transition(.materialize(delay: 0.04))
         } else if hasTrack {
             compactContent

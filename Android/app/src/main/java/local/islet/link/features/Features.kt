@@ -58,15 +58,32 @@ import local.islet.link.wire.Message
 object Features {
     fun prefs(context: Context): SharedPreferences = context.getSharedPreferences("features", Context.MODE_PRIVATE)
 
+    /**
+     * Wireless Phone Mirroring runs over Android's Wireless debugging, which is encrypted (TLS,
+     * paired once with a code). The Mac asks for it to be on before it connects; for pairing,
+     * the developer settings open at it so the code is one tap away.
+     */
+    private fun wirelessDebugging(context: Context, pairing: Boolean) {
+        runCatching { android.provider.Settings.Global.putInt(context.contentResolver, "adb_wifi_enabled", 1) }
+            .onFailure { android.util.Log.i("IsletLink", "wireless debugging: $it") }
+        if (pairing) runCatching {
+            context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                .putExtra(":settings:fragment_args_key", "toggle_adb_wireless")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
     /** Sent each time a link comes up: status, what's playing, recent notifications. */
     fun onConnected(context: Context, link: LinkManager) {
         sentIcons.clear()
+        liveSent.clear()
         link.send(status(context))
         PhoneMedia.resend(context)
         NotificationMirror.instance?.let { mirror ->
-            runCatching { mirror.activeNotifications }.getOrNull()
-                ?.sortedBy { it.postTime }?.takeLast(10)
-                ?.forEach { posted(context, it, quiet = true) }
+            val active = runCatching { mirror.activeNotifications }.getOrNull().orEmpty().sortedBy { it.postTime }
+            // The last few notifications, and every Live Activity still going.
+            (active.takeLast(10) + active.filter { it.isOngoing }).distinctBy { it.key }
+                .forEach { posted(context, it, quiet = true) }
         }
     }
 
@@ -76,6 +93,8 @@ object Features {
             "notif.act" -> act(context, json.optString("key"), json.optInt("i"), json.optString("reply").takeIf { json.has("reply") })
             "notif.dismiss" -> runCatching { NotificationMirror.instance?.cancelNotification(json.optString("key")) }
             "media.cmd" -> PhoneMedia.command(json.optString("action"), json.optDouble("value", 0.0))
+            "wireless.on" -> wirelessDebugging(context, pairing = false)
+            "wireless.pair" -> wirelessDebugging(context, pairing = true)
             "clip" -> if (prefs(context).getBoolean("clipboard", true)) setClipboard(context, json.optString("text"))
             "text" -> receivedText(context, json.optString("text"))
             "find" -> FindPhone.start(context)
@@ -130,7 +149,7 @@ object Features {
         val isCall = notification.category == Notification.CATEGORY_CALL
         if (sbn.packageName == context.packageName) return
         if (notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
-        if (sbn.isOngoing && !isCall) return
+        if (sbn.isOngoing && !isCall) { live(context, sbn); return }
         if (extras.containsKey(Notification.EXTRA_MEDIA_SESSION)) return
         if (sbn.packageName in muted(context)) return
         rememberApp(context, sbn.packageName)
@@ -166,7 +185,50 @@ object Features {
         ), icon))
     }
 
+    private val liveSent = ConcurrentHashMap<String, Pair<Long, String>>()
+    private val liveCategories = setOf(
+        Notification.CATEGORY_NAVIGATION, Notification.CATEGORY_STOPWATCH, Notification.CATEGORY_PROGRESS,
+        Notification.CATEGORY_WORKOUT, Notification.CATEGORY_LOCATION_SHARING,
+    )
+
+    /**
+     * Live Activities: ongoing notifications that track something as it happens (Android 16's
+     * Live Updates, navigation, a delivery or ride, a stopwatch, a download). Plain "running"
+     * notifications from background services are left out. Updates are sent at most once a
+     * second unless the words change.
+     */
+    private fun live(context: Context, sbn: StatusBarNotification) {
+        if (sbn.packageName in muted(context)) return
+        val notification = sbn.notification
+        val extras = notification.extras
+        if (extras.containsKey(Notification.EXTRA_MEDIA_SESSION)) return
+        val max = extras.getInt(Notification.EXTRA_PROGRESS_MAX)
+        val indeterminate = extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE)
+        val chronometer = extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER)
+        val promoted = Build.VERSION.SDK_INT >= 36 && notification.flags and Notification.FLAG_PROMOTED_ONGOING != 0
+        if (!(promoted || max > 0 || indeterminate || chronometer || notification.category in liveCategories)) return
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+        val text = (extras.getCharSequence(Notification.EXTRA_TEXT) ?: extras.getCharSequence(Notification.EXTRA_SUB_TEXT))?.toString().orEmpty()
+        if (title.isBlank() && text.isBlank()) return
+        val short = if (Build.VERSION.SDK_INT >= 36) notification.shortCriticalText?.toString() else null
+        val fraction = if (max > 0) extras.getInt(Notification.EXTRA_PROGRESS).toDouble() / max else -1.0
+        val words = "$title|$text|$short|$chronometer|${notification.`when`}"
+        val now = android.os.SystemClock.elapsedRealtime()
+        val last = liveSent[sbn.key]
+        if (last != null && last.second == words && now - last.first < 1_000) return
+        liveSent[sbn.key] = now to words
+        val icon = if (sentIcons.add(sbn.packageName)) appIcon(context, sbn.packageName) else ByteArray(0)
+        LinkManager.get(context).send(Message.of("live.post", mapOf(
+            "key" to sbn.key, "pkg" to sbn.packageName, "app" to appName(context, sbn.packageName),
+            "title" to title, "text" to text.take(300), "short" to (short ?: ""),
+            "progress" to fraction, "indeterminate" to indeterminate,
+            "chronometer" to chronometer, "countdown" to extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN),
+            "when" to notification.`when`,
+        ), icon))
+    }
+
     fun removed(context: Context, sbn: StatusBarNotification) {
+        if (liveSent.remove(sbn.key) != null) LinkManager.get(context).send(Message.of("live.remove", mapOf("key" to sbn.key)))
         if (sentText.remove(sbn.key) != null) LinkManager.get(context).send(Message.of("notif.remove", mapOf("key" to sbn.key)))
     }
 
